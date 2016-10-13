@@ -1,0 +1,19 @@
+<<<Settings file for phaser script>>>
+
+<<< Mandatory Settings, value in text>>>
+@runType    	= N                               <Y: Running on whole genome | N: running on transcriptome or scaffold file (N)>
+
+@index     		= /home/kakrana/0.Atul/1.PHAS/13.RiceTransQifa/assembl.v2/index/merged.index        <If geno = 'Y' then index path from $ALLDATA; if geno = 'N' then prepare index of your file. Use command bowtie-build GENOMEFILE.fa NAME_FOR_INDEX >
+@db         	= RICE_sbsQIFA_sRNA               <sRNA DB to download libraries>
+@fetchLib    	= N                               <Y: Get data for all libs in DB | N: To run on specific libs specified in @userLibs setting below>
+@userLibs 		= 2599,2600							<Specify library IDs in comma separated format to fetch data. Used only if @fetchLib setting is set to "N">
+@phase          = 24                                <Desired phase to use for prediction>
+
+<<<Path settings, value in text>>>
+@path_prepro_git=/home/kakrana/git/prepro-v5	<Please add path to prepro-v5 git reporsitory, phaster script uses modules from it>
+
+
+<<<END>>>
+<<<Script for predicting lib-wise phased loci>>>
+<<<v0.85>>>
+<<<Author: kakrana@gmail.com>>>
