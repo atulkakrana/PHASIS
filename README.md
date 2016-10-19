@@ -4,7 +4,7 @@
 
 phasTER has four user accesible components and these will be released in particular order
 
-####1. phaser: library-specific phased-loci using the phasTER-core-scripts
+####1. phaser: Library-specific phased-loci using the phasTER-core-scripts
   * Massively parallel – both at genome and library-level
   * Optimizes for minimum runtime
   * Works at both genome- and transcriptome-level
@@ -14,7 +14,7 @@ phasTER has four user accesible components and these will be released in particu
   * Provides most-accurate 5’ and 3’-ends
 
 ##### Usage
-  1. Copy the collapser binary to same folder where phaser analysis was done
+  1. Copy the `collapser` binary to same folder where phaser analysis was done
   2. Run collapser `python3 collapser -pval <p-value cutoff>`
   3. Results will be placed in *collapsed* folder
 
