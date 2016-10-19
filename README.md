@@ -18,7 +18,7 @@ phasTER has four user accesible components and these will be released in particu
 ..2. Run collapser `python3 collapser -pval <p-value cutoff>`
 ..3. Results will be placed in *collapsed* folder
 
-**Note**
+##### Note
 Authors recommend using a robust p-value cutoff like 1e-05 or less. If you do not use the `-pval` switch, and execute 
 `collapser` then a default pvalue of 1e-05 is used. `collapser` can be executed without `-pval` switch by running command:
 `python3 collapser`
