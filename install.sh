@@ -1,5 +1,7 @@
 #!/bin/bash
 
+## version 1.01
+
 printf "\nIn case of any issue at any point in phasTER analyses, contact authors at:\n"
 # printf "Atul Kakrana: kakrana@udel.edu\n"
 # printf "Reza Hammond: rkweku@udel.edu\n\n"
@@ -58,8 +60,9 @@ fi
 
 if [ ! -f ./revferno.py ]
 then
-  printf "revferno source not found in current directory"
-  printf "Please check that you downloaded complete archive" 
+  printf "revferno source not found in current directory\n"
+  printf "Please check that you downloaded complete archive\n"
+  printf "Download complete package and rerun script\n\n"
   exit 1
 else
   python3 -m py_compile revferno.py
@@ -81,26 +84,26 @@ else
   mkdir ~/phaster
 fi
 
-if [ ! -f ./phasiRNA_prediction_pipeline.ver.genome.pl ]
+if [ ! -f ./phasiRNA_prediction_pipeline.genome.v1.pl ]
 then
   printf "phaster-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n\n"
   printf "Download complete package and rerun script\n"
   exit 1
 else
-  cp phasiRNA_prediction_pipeline.ver.genome.pl ~/phaster
-  rm phasiRNA_prediction_pipeline.ver.genome.pl
+  cp phasiRNA_prediction_pipeline.genome.v1.pl ~/phaster
+  rm phasiRNA_prediction_pipeline.genome.v1.pl
 fi
 
-if [ ! -f ./phasiRNA_prediction_pipeline.ver.MUL.pl ]
+if [ ! -f ./phasiRNA_prediction_pipeline.MUL.v1.pl ]
 then
   printf "phaster-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  cp phasiRNA_prediction_pipeline.ver.MUL.pl ~/phaster
-  rm phasiRNA_prediction_pipeline.ver.MUL.pl
+  cp phasiRNA_prediction_pipeline.MUL.v1.pl ~/phaster
+  rm phasiRNA_prediction_pipeline.MUL.v1.pl
 fi
 
 ## Remove old folder
@@ -125,3 +128,7 @@ printf "\nphasTER tool-set is ready be used\n"
 printf "See readme here: https://github.com/atulkakrana/phasTER\n\n"
 
 exit 1
+
+
+### Change Log 
+### Edited names of phasTER-core scripts

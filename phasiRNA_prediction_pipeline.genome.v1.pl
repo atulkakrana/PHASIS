@@ -33,7 +33,7 @@ use Parallel::ForkManager;
 #
 ######################################################################
 
-my $version  = 0.296;
+my $version  = 1.0;
 Ptime("games start...");
 
 # make sure Perl is over 5.12
@@ -162,7 +162,7 @@ if ($options->{f} =~ /t/i) {
 Ptime("aligning...");
 Ptime("script version is $version..");
 
-my @parameters = join(" ", "-f",  "$k -n $mm", "-p $cpu", "$options->{d}", "$input", " >$prefix.$bowtie_output");
+my @parameters = join(" ", "-f",  "-a -v $mm", "-m 10" ,"-p $cpu", "$options->{d}", "$input", " >$prefix.$bowtie_output");
 my @bowtie_out = system("bowtie @parameters");
 Ptime("aligning is done");
 
@@ -458,7 +458,7 @@ if ($pare_data) {# the pare format is tag only
 	close IN;
 	close OUT;
 	
-	my @parameters = join(" ", "-f",  "$k -n $mm", "-p $cpu", "$options->{d}", "$pare_fas", " >$prefix.pare.output");
+	my @parameters = join(" ", "-f",  "$k -v $mm", "-p $cpu", "$options->{d}", "$pare_fas", " >$prefix.pare.output");
 	my @bowtie_out = system("bowtie @parameters");
 		
 	# --------------------- parsing the PARE alignment, generate the data structure---------------------------
@@ -1260,7 +1260,9 @@ sub top3_phase_judge {
 
 
 
-
+## Log Change
+## Removed -k mode in bowtie and added -a, replaced -n mode with -v and added -m ceiling. 
+## In case of transcriptome/scaffold version -m ceiling is kept high as these can match to multiple isoforms
 
 
 

@@ -1,6 +1,8 @@
 #!/usr/local/bin/python3
 
-## This script uses the phasiRNA scripts from SVN So, make sure your svn has Pingchuan phasi-prediction scripts
+## phaser: identifies phased siRNA clusters
+## Updated: version-v0.95 10/24/16 
+## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
 #### FUNCTIONS ###########################################
@@ -8,30 +10,17 @@
 import os,sys,subprocess,multiprocessing,time,getpass,shutil,hashlib,datetime
 from multiprocessing import Process, Queue, Pool
 import os.path
-# import mysql.connector as sql
+from os.path import expanduser
 
 #### USER SETTINGS ########################################
 
 
 ### Settings file
-setFile     = "phaser.set"
-memFile     = "phaser.mem"
-res_folder  = "phased"
-# allowedHost = ['tarkan.ddpsc.org']
-# allowedUser = ['kakrana','suresh','kun','patel','rkweku']
-
-
-## Genome - Mandatory
-# runType            = 'N'                               ## Run on whole genome (Y) or transcriptome file (N) - If (N) then provide index of transcriptome
-# index      = "../../index/merged.index"        ## If geno = 'Y' then index path from $ALLDATA; if geno = 'N' then prepare index of your file 
-#                                                     ## using bowtie-build command like bowtie-build GENOMEFILE.fa NAME_FOR_INDEX
-
-# ## sRNA - Mandatory
-# db              = 'RICE_sbsQIFA_sRNA'               ## sRNA DB
-# fetchLib     = 'N'                               ## (Y): Get IDs for all libs in DB (N): If you want to run on specific libs than 'N' and specifiy libs below
-# # userLibs = [(2435,),(2436,),(2437,),(2438,),(2439,),(2440,),(2441,),(2495,),(2496,),(2497,),(2498,),(2499,),(2500,),(2501,)] ## Used only if fetchLib == 'N'
-# userLibs = [(2509,),(2510,),(2511,),(2512,),(2513,),(2514,),(2515,),(2516,),(2517,),(2518,),(2519,),(2520,),(2521,),(2522,),(2596,),(2597,),(2598,),(2599,),(2600,),(2601,),(2602,)] ## Used only if fetchLib == 'N'
-# phase           = 21                                ## Phase to use for prediction
+setFile         = "phaser.set"
+memFile         = "phaser.mem"
+res_folder      = "phased_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))
+home            = expanduser("~")
+phaster_path    = "%s/.phaster" % (home)
 
 ## Degradome - Optional ####################################
 deg             = 'N'                               ## Use Degradome validation, IF yes enter PARE db in line below
@@ -39,13 +28,14 @@ PARE            = 'GuturGu'                         ## If deg = 'Y' then File fo
 
 ## ADVANCED SETTINGS #######################################
 cores           = 0                                 ## 0: Most cores considered as processor pool | 1-INTEGER: Cores to be considered for pool
-# nthread         = 3                               ## Threads perprocess
+nthread         = 3                               ## Threads perprocess
 # server          = "tarkan.ddpsc.org"                ## Server to use to fetch library information and smallRNA libraries
 # perl            = "/usr/local/bin/perl_5.18"        ## Josh updated the perl on Tarkan and its not ready yet for PHAS script FORK is missing and somemore modules -Check with Pingchuan help
 perl            = "perl"
 Local           = 3                                 ## [0]: Files in directory [2]: Get the libs from $ALLDATA with raw reads 
                                                     ## [3] Get library from srna db with reads filtered on number of hits
-
+noiseLimit      = 2
+hitsLimit       = 10
 #############################################################
 #############################################################
 
@@ -142,7 +132,7 @@ def readSet(setFile):
                     print('User Input index location:       ',index)
 
                 elif param.strip() == '@userLibs':
-                    global userLibs
+                    global libs
                     libs = list(map(str,value.strip().split(',')))
                     print('User Input Libs:                 ',libs)
 
@@ -281,7 +271,7 @@ def PHASBatch2(aninput):
 
     print ("\n#### Fn: phaser #########################")
     # print("\naninput\n",aninput)
-    lib,runType,index,deg,nthread = aninput
+    lib,runType,index,deg,nthread,noiseLimit,hitsLimit = aninput
     
     ### Sanity check #####################
     if not os.path.isfile(lib):
@@ -302,18 +292,23 @@ def PHASBatch2(aninput):
     # nproc2 = str(nproc)
     nthread     = str(nthread)
     sRNAratio   = str(75)
+    noiseLimit  = str(noiseLimit)
     print(pro_file)
 
     if runType == 'Y':### Uses Whole genome as input
+        full_path = "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path)
+        # print(full_path)
         if deg == 'Y':
-            retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+            full_path = "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path)
+            # print(full_path)
+            retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.genome.v1.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
         else:
             if libFormat == "T":
                 aformat = "t"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.genome.v1.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             elif libFormat == "F":
                 aformat = "f"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.genome.v1.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             else:
                 print("** Invalid '@libFormat' parameter value")
                 print("** Please check the '@libFormat' parameter value in setting file")
@@ -321,16 +316,18 @@ def PHASBatch2(aninput):
                 print("** Script will exit now")
                 sys.exit()
     
-    else: ### Uses FASTA file of genes as input         
+    else: ### Uses FASTA file of genes as input
+        full_path = "%s/phasiRNA_prediction_pipeline.ver.MUL.pl" % (phaster_path)
+        # print(full_path)        
         if deg == 'Y':
-            retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.ver.MUL.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
-        else:
+            retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.MUL.v1.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+        else:   
             if libFormat == "T":
                 aformat = "t"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.ver.MUL.pl" % (phaster_path), "-i", pro_file, "-f", aformat, "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.MUL.v1.pl" % (phaster_path), "-i", pro_file, "-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             elif libFormat == "F":
                 aformat = "f"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.MUL.v1.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             else:
                 print("** Invalid '@libFormat' parameter value")
                 print("** Please check the '@libFormat' parameter value in setting file")
@@ -381,12 +378,12 @@ def optimize(nproc):
     return nthread 
 
 ## Generate rawInputs fpr PP balance
-def inputList(libs,runType,index,deg,nthread):
+def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit):
     '''generate raw inputs for parallel processing'''
 
     rawInputs = [] ## An empty list to store inputs for PP
     for alib in libs:
-        rawInputs.append((alib,runType,index,deg,nthread))
+        rawInputs.append((alib,runType,index,deg,nthread,noiseLimit,hitsLimit))
 
     # print("These are rawInputs:",rawInputs)
 
@@ -418,6 +415,7 @@ def indexBuilder(genoFile):
     os.mkdir('./index')
     
     genoIndex   = '%s/index/%s' % (os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Can be merged with genoIndex from earlier part if we use bowtie2 earlier
+    # genoIndex   = './index/%s' % (fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Alternative approach -Can be merged with genoIndex from earlier part if we use bowtie2 earlier
     print('Creating index of cDNA/genomic sequences:%s**\n' % (genoIndex))
     retcode     = subprocess.call(["bowtie-build", fastaclean, genoIndex])
     if retcode == 0:## The bowtie mapping exit with status 0, all is well
@@ -453,7 +451,7 @@ def FASTAClean(filename,mode):
     ## Read seqeunce file
     fh_in       = open(filename, 'r')
     print ("PHASER uses FASTA header as key for identifying the phased loci")
-    print ("Cleaning '%s' reference FASTA file" % (filename))
+    print ("Cleaning header '%s' reference FASTA file" % (filename))
     
     ## Write file
     if mode == 0:
@@ -643,7 +641,7 @@ def main(libs):
 
     ### 2. Run Phaser
     print('These are the libs: %s' % (libs))
-    rawInputs = inputList(libs,runType,genoIndex,deg,nthread)
+    rawInputs = inputList(libs,runType,genoIndex,deg,nthread,noiseLimit,hitsLimit)
 
     #### Test - Serial Mode
     # for aninput in rawInputs:
@@ -654,7 +652,7 @@ def main(libs):
 
     #### close runLog
     phaser_end = time.time()
-    fh_run.write("Analysis Time:%ss\n" % (round(phaser_end-phaser_start,2)))
+    fh_run.write(" Total analysis time:%ss\n" % (round(phaser_end-phaser_start,2)))
     fh_run.close()
 
 if __name__ == '__main__':
@@ -671,7 +669,8 @@ if __name__ == '__main__':
     libs        = readSet(setFile)
     nthread     = optimize(nproc)
     main(libs)
-    print ('\n\nPhasing Analysis finished successfully')
+    print ('\n\n#### Phasing Analysis finished successfully')
+    print ("#### Please see '%s' folder for results\n" % (res_folder))
     sys.exit()
 
 ########### CHANGE LOG ########
@@ -684,7 +683,7 @@ if __name__ == '__main__':
 
 ## v02 -> v03
 ## Added option to get libs from the server with hits filter
-## COrrected bug in main(), repaced libs with userlibs for specific librarues part
+## COrrected bug in main(), repaced libs with userlibs for specific libraries part
 ## Perl location added as variable
 
 ## v03 -> v04
@@ -718,8 +717,10 @@ if __name__ == '__main__':
 ## Script run on local libraries
 ## Localization complete
 ## Added sanity checks
-## Index made if change in genome detected, and reused if genome/referenc eis not changed
+## Index made if change in genome detected, and reused if genome/reference is not changed
 
+## v090 -> v095
+## Added the phaster-core production/installed path
 
 ## TO-DO
 ## Add automatic index resolution

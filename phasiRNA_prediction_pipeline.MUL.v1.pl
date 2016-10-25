@@ -31,7 +31,7 @@ use File::Basename;
 #
 ######################################################################
 
-my $version  = 0.342;
+my $version  = 1.0;
 Ptime("start...");
 
 # make sure Perl is over 5.12
@@ -158,7 +158,7 @@ if ($options->{f} =~ /t/i) {
 
 Ptime("aligning...");
 Ptime("script version is $version..");
-my @parameters = join(" ", "-f",  "$k -n $mm", "-p $cpu", "$options->{d}", "$input", " >$prefix.$bowtie_output");
+my @parameters = join(" ", "-f",  "-a -v $mm","-m 40", "-p $cpu", "$options->{d}", "$input", " >$prefix.$bowtie_output");
 
 my @bowtie_out = system("bowtie @parameters");
 Ptime("aligning is done");
@@ -1218,7 +1218,9 @@ sub top3_phase_judge {
 
 
 
-
+## Log Change
+## Removed -k mode in bowtie and added -a, replaced -n mode with -v and added -m ceiling. 
+## In case of transcriptome/scaffold version -m ceiling is kept high as these can match to multiple isoforms
 
 
 
