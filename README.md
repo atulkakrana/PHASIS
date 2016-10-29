@@ -1,5 +1,3 @@
-
-
 #phasTER tool-set for phased clusters discovery
 **version**: rc1  
 **updated**: 10/24/2015  
@@ -69,6 +67,7 @@ Here is an example of settings file:
 
 
 
+
 ##2. collapser: Summarizes the libraries-specific results to a non-overlapping genome- or transcriptome-level set
 
 `phaser` can be used to generate PHAS output files for tens to hundreds of sRNA libraries, but a user might be interested in set of phased-loci from a specific group of libraries. To address this, `collapser` does three jobs:
@@ -103,6 +102,7 @@ Here is an example of settings file:
 
 **Note**
 Authors recommend using a robust p-value cutoff like 1e-05 or less. If user executes `collapser` without the `-pval` switch, then a default *p-value* of 1e-05 is used. `collapser` can be executed without `-pval` switch by running command: `python3 collapser -dir <phased results folder>`
+
 
 
 
