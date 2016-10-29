@@ -96,7 +96,7 @@ c) computes precise start and stop coordinates of phasing for each loci using da
 **Note**
 Authors recommend using a robust p-value cutoff like 1e-05 or less. If user executes `collapser` without the `-pval` switch, then a default *p-value* of 1e-05 is used. `collapser` can be executed without `-pval` switch by running command: `python3 collapser -dir <phased results folder>`
 
-####3. revferno: Identifies miRNAs triggers for PHAS locus using sPARTA miRNA-target predictions
+###3. revferno: Identifies miRNAs triggers for PHAS locus using sPARTA miRNA-target predictions
 
 `revferno` performs an exhaustive check for miRNA triggers of PHAS loci using the predicted or PARE-validated target sites from sPARTA. It works downstream of `miRferno`, which is an exhaustive algorithm to predict miRNA targets, thereby increasing the likelihood of capturing the miRNA trigger of PHAS loci. `revferno` can test hundred thousands `mirferno` predicted targets as triggers of PHAS loci, in a reasonable time ranging from few seconds to minutes. In addition, it scans both 5'-head and 3'-tail of PHAS loci, accounts for missing phasiRNAs, dicer-and strand-offsets for high sensitivity. 
 
