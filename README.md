@@ -12,10 +12,8 @@ Basic knowledge of UNIX/Linux command-line interface is expected to install and 
 1. Download the archive for latest phasTER version from our release page: https://github.com/atulkakrana/phasTER/releases
 2.  Copy the archive to the machine, which you intend to use for your analysis and decompress:
 
-	For *.zip archive:
-``` unzip phasTER*.zip```
-and for *.tar.gz archive:
-```tar -xvzf phasTER*.tar.gz```
+  *For *.zip archive: ``` unzip phasTER*.zip```    
+  *For *.tar.gz archive:```tar -xvzf phasTER*.tar.gz```    
 3. Install or compile the scripts by using bundled `install.sh` script:
 	```sh install.sh```
 4. At this point you should be able to see binaries for `phaser`, `collapser` and `revferno`
