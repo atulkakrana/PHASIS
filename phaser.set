@@ -2,27 +2,23 @@
 
 <<< Mandatory Settings, value in text>>>
 @runType    	= Y
-@reference  	= /home/kakrana/99.genomes/rice.msu.7/test.fa
-@index 			= 
-@userLibs 		= 2599_chopped.txt,2600_chopped.txt
+@reference  	= /home/kakrana/99.genomes/rice.msu.7/all.fa
+@userLibs 		= 2599_norm.txt,2600_norm.txt
 @libFormat 		= T					
-@phase          = 24
+@phase          = 21
 
-<<<Path settings, value in text>>>
-@path_prepro_git=/home/kakrana/git/prepro-v5/
-#@path_prepro_git=./.phaster/
+<<< Optional Settings, value in text>>>
+@index 			= 
 
 <<<Settings Help>>>
 <@runType 			- Y: Running on whole genome | N: running on transcriptome or scaffold file>
 <@reference   		- If geno = 'Y' then genome FASTA |  if geno = 'N' then yur transcriptome or scaffold FASTA>
-<@index   			- If bowtie index exist already provide the path and index suffix. If not, then leave blank, the index will be made in first run and will be reused in subsequent runs>
 <@userLibs 			- Specify library IDs in comma separated format to fetch data. Used only if @fetchLib setting is set to "N">
 <@libFormat 		- Specify the sRNA library format. F: Fasta Format | T: Tag count format>
 <@phase 			- Desired phase to use for prediction>
-<@path_prepro_git 	- Please pull prepro-v5 git repository from meyers lab and paste the path here, phaster script uses modules from it>
-
+<@index   			- If bowtie index exist already provide the path and index suffix. If not, then leave blank, the index will be made in first run and will be reused in subsequent runs>
 
 <<<END>>>
 <<<Script for predicting lib-wise phased loci>>>
-<<<v0.95>>>
+<<<v0.96>>>
 <<<Author: kakrana@gmail.com>>>
