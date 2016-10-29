@@ -95,11 +95,11 @@ Here is an example of settings file:
 
 **Quality Parameters**
 
-`bestLib`:  sRNA library name which has longest PHAS length i.e. maximum cycles of phasiRNAs detected
-`bestKVal`: The maximum and uninterrupted cycle of phasiRNAs detected for specific PHAS locus.  PHAS locus with >= 6 cycles can be considered as a true PHAS locus.
-`phasiDominance`: Ratio of phasiRNAs abundances against total siRNAs from specific PHAS locus. A high ratio (~0.75) is expected from a true PHAS locus.
-`MaxTagRatio`: Ratio of most abundant siRNA against all the phasiRNAs from specific PHAS locus. A higher ratio would indicate that PHAS locus could be a lineage or species-specific miRNA.
-`totalPHASAbundance`: Sum of the abundances of phasiRNAs. 
+`bestLib`:  sRNA library name which has longest PHAS length i.e. maximum cycles of phasiRNAs detected.     
+`bestKVal`: The maximum and uninterrupted cycle of phasiRNAs detected for specific PHAS locus.  PHAS locus with >= 6 cycles can be considered as a true PHAS locus.    
+`phasiDominance`: Ratio of phasiRNAs abundances against total siRNAs from specific PHAS locus. A high ratio (~0.75) is expected from a true PHAS locus.    
+`MaxTagRatio`: Ratio of most abundant siRNA against all the phasiRNAs from specific PHAS locus. A higher ratio would indicate that PHAS locus could be a lineage or species-specific miRNA.   
+`totalPHASAbundance`: Sum of the abundances of phasiRNAs.    
 
 **Note**
 Authors recommend using a robust p-value cutoff like 1e-05 or less. If user executes `collapser` without the `-pval` switch, then a default *p-value* of 1e-05 is used. `collapser` can be executed without `-pval` switch by running command: `python3 collapser -dir <phased results folder>`
