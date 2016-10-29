@@ -10,13 +10,14 @@ phasTER has three user accessible components and these explained below in order 
 Basic knowledge of UNIX/Linux command-line interface is expected to install and use phasTER tool set. If you are not comfortable using the command-line then take help from your Linux administrator or geeky colleague. Follow these steps to generate phasTER binaries for your machine:
 
 1. Download the archive for latest phasTER version from our release page: https://github.com/atulkakrana/phasTER/releases
-2.  Copy the archive to the machine, which you intend to use for your analysis and decompress:
 
-  *For *.zip archive: ``` unzip phasTER*.zip```    
-  *For *.tar.gz archive:```tar -xvzf phasTER*.tar.gz```    
+2. Copy the archive to the machine, which you intend to use for your analysis and decompress. For zip archive: `unzip phasTER*.zip` and for tar.gz archive: `tar -xvzf phasTER*.tar.gz`   
+
 3. Install or compile the scripts by using bundled `install.sh` script:
 	```sh install.sh```
+	
 4. At this point you should be able to see binaries for `phaser`, `collapser` and `revferno`
+
 5. Copy these binaries to your working folder and use them for you analyses.
 
 **Note**: These binaries are good to use on the machine on which these were compiled. Please repeat the above process, if you intend to use phasTER on a different machine. 
