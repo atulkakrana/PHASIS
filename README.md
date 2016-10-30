@@ -11,6 +11,6 @@ updated: 10/24/2015
 
 **3.** **revferno**: Predicts miRNAs triggers for PHAS locus using sPARTA miRNA-target predictions
 
-Please see phasTER [wiki] (https://github.com/atulkakrana/phasTER/wiki) for more details on installation, usage, output files and more.
+Please see phasTER [wiki] (https://github.com/atulkakrana/phasTER/wiki) for details on installation, usage, output files and more.
 
 author: kakrana@udel.edu
