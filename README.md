@@ -3,7 +3,7 @@
 version: rc1
 updated: 10/24/2015
 
-**phasTER** is a massively-parallelized tool-set for phased siRNAs clusters discovery. It has three user accessible components that enables discovery of phased siRNA loci from tens to hundreds of sRNA libraries, prepares summary of these loci containing library-specific abundances and other quality-filtering parameters and finally identifies miRNA triggers of these PHAS loci. The three **phasTER** components are:
+**phasTER** is a parallelized toolset for phased siRNAs clusters discovery. It has three user accessible components that enables discovery of phased siRNA loci from tens to hundreds of sRNA libraries, prepares summary of these loci containing library-specific abundances and other quality-filtering parameters and finally identifies miRNA triggers of these PHAS loci. The three **phasTER** components are:
 
 **1.** **phaser**: Identifies library-specific phased-loci
 
