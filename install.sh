@@ -1,6 +1,6 @@
 #!/bin/bash
 
-## version 1.01
+## Updated: version-v1.02 01/04/17 
 
 printf "\nIn case of any issue at any point in phasTER analyses, contact authors at:\n"
 # printf "Atul Kakrana: kakrana@udel.edu\n"
@@ -23,7 +23,7 @@ else
   python3 -m py_compile phaser.py
   cd __pycache__ && mv phaser.*.pyc phaser 
   chmod u+x phaser && cp phaser ../
-  printf "Done: phaser\n"
+  printf "Done:      phaser\n"
   cd ..
   rm ./phaser.py
 fi
@@ -47,7 +47,7 @@ else
   python3 -m py_compile collapser.py
   cd __pycache__ && mv collapser.*.pyc collapser 
   chmod u+x collapser && cp collapser ../
-  printf "Done: collapser\n"
+  printf "Done:      collapser\n"
   cd ..
   rm ./collapser.py
 fi
@@ -68,7 +68,7 @@ else
   python3 -m py_compile revferno.py
   cd __pycache__ && mv revferno.*.pyc revferno 
   chmod u+x revferno && cp revferno ../
-  printf "Done: revferno\n"
+  printf "Done:      revferno\n"
   cd ..
   rm ./revferno.py
 fi
@@ -84,26 +84,37 @@ else
   mkdir ~/phaster
 fi
 
-if [ ! -f ./phasiRNA_prediction_pipeline.genome.v1.pl ]
+if [ ! -f ./phasclust.genome.v2.pl ]
 then
   printf "phaster-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n\n"
   printf "Download complete package and rerun script\n"
   exit 1
 else
-  cp phasiRNA_prediction_pipeline.genome.v1.pl ~/phaster
-  rm phasiRNA_prediction_pipeline.genome.v1.pl
+  cp phasclust.genome.v2.pl ~/phaster
+  rm phasclust.genome.v2.pl
 fi
 
-if [ ! -f ./phasiRNA_prediction_pipeline.MUL.v1.pl ]
+if [ ! -f ./phasclust.MUL.v2.pl ]
 then
   printf "phaster-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  cp phasiRNA_prediction_pipeline.MUL.v1.pl ~/phaster
-  rm phasiRNA_prediction_pipeline.MUL.v1.pl
+  cp phasclust.MUL.v2.pl ~/phaster
+  rm phasclust.MUL.v2.pl
+fi
+
+if [ ! -f ./sPARTA.py ]
+then
+  printf "sPARTA source not found in current directory\n"
+  printf "Please check that you downloaded complete archive\n"
+  printf "Download complete package and rerun script\n\n"
+  exit 1
+else
+  cp sPARTA.py ~/phaster
+  rm sPARTA.py
 fi
 
 ## Remove old folder
@@ -114,16 +125,16 @@ then
 fi
 
 mv ~/phaster ~/.phaster
-printf "Done: core scripts\n"
-# mv phaser ~/.phaster          ### Will need modification of environment variable
-# mv collapser ~/.phaster       ### Will need modification of environment variable
-# mv revferno ~/.phaster        ### Will need modification of environment variable
+printf "Done:      core scripts\n"
 
 #### Clean up
 if [ -d ./__pycache__ ]; then
   rm -r __pycache__/ 
 fi
+printf "Deleted:   source files\n"
 #############################
+printf "\nNote:'install.sh' cannot be re-used after a successful installation\n"
+printf "Note: If installation fails, then recopy all files and try again\n"
 printf "\nphasTER tool-set is ready be used\n"
 printf "See readme here: https://github.com/atulkakrana/phasTER\n\n"
 
@@ -131,4 +142,7 @@ exit 1
 
 
 ### Change Log 
-### Edited names of phasTER-core scripts
+## V1.0 -> v1.01
+## Edited names of phasTER-core scripts
+## v1.01 -> v1.02
+## Added sPARTA script

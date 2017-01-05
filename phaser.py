@@ -1,16 +1,19 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v0.95 10/24/16 
+## Updated: version-v1.0 01/04/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
 #### FUNCTIONS ###########################################
 
-import os,sys,subprocess,multiprocessing,time,getpass,shutil,hashlib,datetime
+import os,sys,subprocess,multiprocessing,time,getpass,shutil,hashlib,datetime,collections,re,argparse
+from importlib.machinery import SourceFileLoader
 from multiprocessing import Process, Queue, Pool
+from subprocess import check_output
 import os.path
 from os.path import expanduser
+# from dedup import dedup_main,dedup_process,dedup_fastatolist,deduplicate,dedup_writer
 
 #### USER SETTINGS ########################################
 
@@ -39,13 +42,20 @@ hitsLimit       = 10
 #############################################################
 #############################################################
 
-def checkuser():
+parser      = argparse.ArgumentParser()
+parser.add_argument('--lowmem', action='store_true', default=False, help=
+    'Flag to reduce memory usage for large genomes. Using this flag'\
+    'will increase the runtime for phaser')
+
+args = parser.parse_args()
+
+def checkUser():
     '''
     Checks if user is authorized to use script
     '''
-    print ("#### Verifying User Authorization ################")
+    print ("\n#### Verifying User Authorization ################")
     auser = getpass.getuser()
-    print("Hello '%s' - If you face any issues, then please report: https://github.com/atulkakrana/phasTER/issues \n" % (auser))
+    print("Hello '%s' - Please report issues at: https://github.com/atulkakrana/phasTER/issues" % (auser))
     # if auser in allowedUser:
     #     print("Hello '%s' - Issues need to be reproted: https://github.com/atulkakrana/phasTER/issues \n" % (auser))
     # else:
@@ -87,6 +97,94 @@ def checkHost(allowedHost):
 
     return None
 
+def checkDependency():
+    '''Checks for required components on user system'''
+
+    print("\n#### Fn: checkLibs #####################")
+    
+    goSignal  = True ### Signal to process is set to true 
+
+    ### Check PYTHON version
+    pythonver = sys.version_info[0]
+    if int(pythonver) >= 3:
+        print("--Python v3.0 or higher          : found")
+        pass
+    else:
+        print("--Python v3.0 or higher          : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    ### Check PERL version
+    # perlver = os.system("perl -e 'print $];' &> /dev/null")
+    aninfo  = check_output(["perl", "-v"]).decode("utf-8")
+    aninfo2 = aninfo.split('\n')[1].split('(')[1].split(')')[0].rsplit('.',1)[0]
+    perlver = aninfo2[1:] ## Remove 'v' before version
+    if float(perlver) >= 5.014:
+        print("--Perl v5.14 or higher           : found")
+        pass
+    else:
+        print("--Perl v5.14 or higher           : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    ### Check BOWTIE
+    isbowtie = shutil.which("bowtie")
+    if isbowtie:
+        print("--Bowtie (v1)                    : found")
+        pass
+    else:
+        print("--Bowtie (v1)                    : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    ### Check Perl dependecies
+    retcode = os.system("perl -MScalar::Util -e1 &> /dev/null")
+    if retcode == 0:
+        print("--Scalar::Util (perl)            : found")
+        pass
+    else:
+        print("--Scalar::Util (perl)            : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    ### Check Perl dependecies
+    retcode = os.system("perl -MData::Dumper -e1 &> /dev/null")
+    if retcode == 0:
+        print("--Data::Dumper (perl)            : found")
+        pass
+    else:
+        print("--Data::Dumper (perl)            : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    ### Check Perl dependecies
+    retcode = os.system("perl -MParallel::ForkManager -e1 &> /dev/null")
+    if retcode == 0:
+        print("--Parallel::ForkManager (perl)   : found")
+        pass
+    else:
+        print("--Parallel::ForkManager (perl)   : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    ### Check Perl dependecies
+    retcode = os.system("perl -MGetopt::Long -e1 &> /dev/null")
+    if retcode == 0:
+        print("--Getopt::Long (perl)            : found")
+        pass
+    else:
+        print("--Getopt::Long (perl)            : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    if goSignal == False:
+        print("\n** Please install the missing libraries before running the analyses")
+        # print("See README for how to install these")
+        print("** revFerno has unmet dependendies and will exit for now\n")
+        sys.exit()
+
+    return None
+
 def readSet(setFile):
     '''
     Read and parse external settings file
@@ -99,7 +197,7 @@ def readSet(setFile):
         print("---Please copy it to same directory as script and rerun")
         sys.exit()
 
-    print("#### Fn: Settings Reader ####################")
+    print("\n#### Fn: Settings Reader ####################")
     
     fh_in   = open(setFile, 'r')
     setFile = fh_in.readlines()
@@ -141,11 +239,6 @@ def readSet(setFile):
                     libFormat = str(value.strip())
                     print('User Input to auto fetch libs:   ',libFormat)
 
-                elif param.strip() == '@genoFile':
-                    global genoFile
-                    genoFile = str(value.strip())
-                    print('User Input genoFile:             ',genoFile)
-
                 elif param.strip() == '@phase':
                     global phase
                     phase = int(value.strip())
@@ -164,110 +257,41 @@ def readSet(setFile):
     # sys.exit()
     return libs
 
-def ConnectToDB(server):
-    
-    ##infile values are '0' when you dont want to pulaod data from local file and '1' when you wish to upload data by local file
-    ##EX:con=sql.connect(host= server, user='kakrana', passwd='livetheday', local_infile = infile)
-    ##Now later in script you can
-    ##cur.execute("LOAD DATA LOCAL INFILE './scoring_input_extend2' INTO TABLE kakrana_data.mir_page_results FIELDS TERMINATED BY ','")
-    
-    print ('\nTrying to connect to mySQL server on %s' % (server))
-    # Try to connect to the database
-    try:
-        con=sql.connect(host= server, user='kakrana', passwd='xxxxxxx')###local_infile = 1 not supported yet so a table has to be updated on row basis
-        print ('Connection Established\n')
 
-    # If we cannot connect to the database, send an error to the user and exit the program.
-    except sql.Error:
-        print ("Error %d: %s" % (sql.Error.args[0],sql.Error.args[1]))
-        sys.exit(1)
-
-    return con
-
-## Get lib ids in the sRNA DB
-def GetLibs(con,db):
-    ##Function that gets just the list names, required to run script in parts.
-    cur = con.cursor()
-    cur.execute('select distinct(lib_id) from %s.library' % (db))
-    libs = cur.fetchall()
-    #print (libs)
-    print ('\nTotal number of sRNA libraries found: %s\n' % (len(libs)))
-    
-    return libs###
-
-## Deprecated
-def PHASBatch(con,libs,runType,index,deg):
-    
-    #os.mkdir('./%s' % (lib))
-    #output_path = './%s' % (lib)
-    
-    for lib in libs:
-        print (lib)
-        cur = con.cursor()
-        cur.execute('SELECT processed_path FROM master.library_info where lib_id = %s' % (lib))
-        path = cur.fetchall()
-        #print(path[0][0])
-        
-        pro_file = path[0][0].replace('$ALLDATA', '/alldata')###Processed sRNA file
-        out_file = '%s.txt' % (lib)
-        rl = str(phase)
-        nproc2 = str(nproc)
-        sRNAratio = str(75)
-        print (pro_file)
-        
-        if runType == 'Y':###Uses Whole genome as input
-            if deg == 'Y':
-                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.genome.pl", "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
-            else:
-                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.genome.pl", "-i", pro_file,"-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
-        
-        else: ### Uses FASTA file of genes as input         
-            #pipe =subprocess.Popen(["perl5.18", "-v"])
-            if deg == 'Y':
-                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.MUL.pl", "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
-            else:
-                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.MUL.pl", "-i", pro_file, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
-                    
-        
-        if retcode == 0:
-            pass
-        else:
-            print("Problem with Phasing script - Return code not 0")
-            sys.exit()
-        
-    return lib
-
-### sRNA Libraries are fetched from server
 def TagAbundanceFile(con,db,libs):
-    
-        for alib in libs:##For all the libraries
+    '''
+    ### sRNA Libraries are fetched from server
+    '''
+    for alib in libs:##For all the libraries
+        
+        ## Check if file already exsits in directory - This saves a lot of time downloading the same file
+        filePath = '%s.fas' % (alib)
+        if os.path.isfile(filePath) == False:
+            print ('\nPreparing sRNA reads file for library: %s' % (alib[0]))
+            #print (lib[0])
+            #print ('Caching tag and count information from server for PARE alib %s' % (alib[0]) )
+            cur = con.cursor()
+            cur.execute("SELECT tag,norm from %s.run_master where lib_id = %s AND (hits between 0 and 20)" % (db,alib[0]))
+            lib_info = cur.fetchall()
+            #print('These are the tags:',lib_info[:10])
             
-            ## Check if file already exsits in directory - This saves a lot of time downloading the same file
-            filePath = '%s.fas' % (alib)
-            if os.path.isfile(filePath) == False:
-                print ('\nPreparing sRNA reads file for library: %s' % (alib[0]))
-                #print (lib[0])
-                #print ('Caching tag and count information from server for PARE alib %s' % (alib[0]) )
-                cur = con.cursor()
-                cur.execute("SELECT tag,norm from %s.run_master where lib_id = %s AND (hits between 0 and 20)" % (db,alib[0]))
-                lib_info = cur.fetchall()
-                #print('These are the tags:',lib_info[:10])
+            fh_out = open('%s.fas' % (alib), 'w')##Naming file with lib_ids name
+            print ('Library cached, writing abundance file')
+            tag_num = 1
+            for ent in lib_info:## All the PARE tags in a library
+                #print (ent)
+                fh_out.write('%s\t%s\n' % (ent[0],ent[1]))
+                tag_num += 1
                 
-                fh_out = open('%s.fas' % (alib), 'w')##Naming file with lib_ids name
-                print ('Library cached, writing abundance file')
-                tag_num = 1
-                for ent in lib_info:## All the PARE tags in a library
-                    #print (ent)
-                    fh_out.write('%s\t%s\n' % (ent[0],ent[1]))
-                    tag_num += 1
-                    
-                fh_out.close()
-            else:
-                print('tag abundance file exists for library: %s' % (alib))
-                pass
+            fh_out.close()
+        else:
+            print('tag abundance file exists for library: %s' % (alib))
+            pass
 
-## Phasing anlysis - New
 def PHASBatch2(aninput):
+    '''
+    Phasing anlysis - New
+    '''
 
     print ("\n#### Fn: phaser #########################")
     # print("\naninput\n",aninput)
@@ -295,20 +319,18 @@ def PHASBatch2(aninput):
     noiseLimit  = str(noiseLimit)
     print(pro_file)
 
-    if runType == 'Y':### Uses Whole genome as input
-        full_path = "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path)
+    if runType == 'G':### Uses Whole genome as input
+        full_path = "%s/phasclust.genome.v2.pl" % (phaster_path)
         # print(full_path)
         if deg == 'Y':
-            full_path = "%s/phasiRNA_prediction_pipeline.ver.genome.pl" % (phaster_path)
-            # print(full_path)
-            retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.genome.v1.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+            retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
         else:
             if libFormat == "T":
                 aformat = "t"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.genome.v1.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             elif libFormat == "F":
                 aformat = "f"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.genome.v1.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             else:
                 print("** Invalid '@libFormat' parameter value")
                 print("** Please check the '@libFormat' parameter value in setting file")
@@ -317,17 +339,17 @@ def PHASBatch2(aninput):
                 sys.exit()
     
     else: ### Uses FASTA file of genes as input
-        full_path = "%s/phasiRNA_prediction_pipeline.ver.MUL.pl" % (phaster_path)
+        full_path = "%s/phasclust.MUL.v2.pl" % (phaster_path)
         # print(full_path)        
         if deg == 'Y':
-            retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.MUL.v1.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+            retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
         else:   
             if libFormat == "T":
                 aformat = "t"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.MUL.v1.pl" % (phaster_path), "-i", pro_file, "-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file, "-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             elif libFormat == "F":
                 aformat = "f"
-                retcode = subprocess.call([perl, "%s/phasiRNA_prediction_pipeline.MUL.v1.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             else:
                 print("** Invalid '@libFormat' parameter value")
                 print("** Please check the '@libFormat' parameter value in setting file")
@@ -343,8 +365,30 @@ def PHASBatch2(aninput):
         
     return None
 
-## Balance process according to core pool
+def PP(module,alist):
+    '''
+    paralleizes process with no results catching
+    '''
+    start = time.time()
+    npool = Pool(int(nproc))
+    npool.map(module, alist)
+
+def PPResults(module,alist):
+    '''
+    Parallelizes and stores result
+    '''
+
+    ####
+    npool   = Pool(int(nproc))
+    res     = npool.map_async(module, alist)
+    results = (res.get())
+    npool.close()
+    return results
+
 def PPBalance(module,alist):
+    '''
+    Balance process according to core pool
+    '''
     #print('***********Parallel instance of %s is being executed*********' % (module))
     start       = time.time()
     ##PP is being used for Bowtie mappings - This will avoid overflooding of processes to server
@@ -365,6 +409,7 @@ def optimize(nproc):
 
     nlibs       = len(libs)
     ninstances  = int(nproc/nlibs) ### Number of parallel instances to use
+    # print("Libs:%s | nproc:%s | ninstance:%s" % (nlibs,nproc,ninstances))
 
     if ninstances > 3:
         nthread = ninstances
@@ -373,11 +418,11 @@ def optimize(nproc):
 
     print("\n#### %s cores reserved for analysis #########" % (str(nproc)))
     print("#### %s threads assigned to one lib #########\n" % (str(nthread)))
-    time.sleep(1)
+    # time.sleep(1)
+
 
     return nthread 
 
-## Generate rawInputs fpr PP balance
 def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit):
     '''generate raw inputs for parallel processing'''
 
@@ -389,13 +434,13 @@ def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit):
 
     return rawInputs
 
-def indexBuilder(genoFile):
+def indexBuilder(reference):
     
     
-    print ("#### Fn: indexBuilder #########################")
+    print ("\n#### Fn: indexBuilder #########################")
     ### Sanity check #####################
-    if not os.path.isfile(genoFile):
-        print("'%s' reference file not found" % (genoFile))
+    if not os.path.isfile(reference):
+        print("'%s' reference file not found" % (reference))
         print("Please check the genomeFile - Is it in specified directory? Did you input wrong name?")
         print("Script will exit for now\n")
         sys.exit()
@@ -405,19 +450,30 @@ def indexBuilder(genoFile):
     #####################################
 
     ### Clean reference ################
-    fastaclean,fastasumm = FASTAClean(genoFile,0)
+    fastaclean,fastasumm = FASTAClean(reference,0)
 
     ### Prepare Index ##################
     print ("**Deleting old index 'folder' !!!!!!!!!!!**")
-    print("If its a mistake cancel now by pressing ctrl+D and continue from index step by turning off earlier steps- You have 5 seconds")
-    time.sleep(5)
+    print("If its a mistake cancel now by pressing ctrl+D and continue from index step by turning off earlier steps- You have 2 seconds")
+    time.sleep(2)
     shutil.rmtree('./index', ignore_errors=True)
     os.mkdir('./index')
     
     genoIndex   = '%s/index/%s' % (os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Can be merged with genoIndex from earlier part if we use bowtie2 earlier
     # genoIndex   = './index/%s' % (fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Alternative approach -Can be merged with genoIndex from earlier part if we use bowtie2 earlier
     print('Creating index of cDNA/genomic sequences:%s**\n' % (genoIndex))
-    retcode     = subprocess.call(["bowtie-build", fastaclean, genoIndex])
+    adcv        = "256"
+    divn        = "6"
+    # orate       = "3" 
+
+    if args.lowmem:
+        print("Running on low memory usage mode")
+        retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
+    else:
+        # print("Optimized for faster run")
+        retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
+        
+
     if retcode == 0:## The bowtie mapping exit with status 0, all is well
         # print("Reference index prepared sucessfully")
         pass
@@ -441,8 +497,6 @@ def indexBuilder(genoFile):
     print("Index prepared:%s\n" % (genoIndex))
 
     # sys.exit()
-    
-    return genoIndex
 
 def FASTAClean(filename,mode):
     
@@ -456,90 +510,64 @@ def FASTAClean(filename,mode):
     ## Write file
     if mode == 0:
         fastaclean = ('%s/%s.clean.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0])) ## os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]
-    elif mode == 1:
-        fastaclean = ('%s/%s.clean.rev.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
-    elif mode == 2:
-        fastaclean = ('%s/%s.clean.revcomp.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
-    elif mode == 3:
-        fastaclean = ('%s/%s.clean.comp.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
-    elif mode == 4:
-        fastaclean = ('%s/%s.clean.rna.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
-    elif mode == 5:
-        fastaclean = ('%s/%s.clean.dna.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
     else:
         print("Input correct mode- 0: Normal | 1: Seqeunces reversed | 2: Seqeunces reverse complemented | 3: Seqeunces complemented only")
         print("USAGE: cleanFasta.v.x.x.py FASTAFILE MODE")
         sys.exit()
 
+    ### Outfiles
     fh_out1     = open(fastaclean, 'w')
-
     fastasumm   = ('%s.summ.txt' % (filename.split('.')[0]))
     fh_out2     = open(fastasumm, 'w')
     fh_out2.write("Name\tLen\n")
     
+    ### Read files
     fasta       = fh_in.read()
     fasta_splt  = fasta.split('>')
-    acount      = 0 ## count the number of entries
+
+    fastaD      = {}    ## Store FASTA as dict
+    acount      = 0     ## count the number of entries
     empty_count = 0
     for i in fasta_splt[1:]:
         ent     = i.split('\n')
-        name    = ent[0].split()[0].strip()
+        aname   = ent[0].split()[0].strip()
+        
+        if runType == 'G':
+            ## To match with phasing-core script for genome version which removed non-numeric and preceding 0s
+            name = re.sub("[^0-9]", "", aname).lstrip('0')
+        else:
+            name = aname
+        
         seq     = ''.join(x.strip() for x in ent[1:]) ## Sequence in multiple lines
         alen    = len(seq)
-
-        if mode == 0:
-            if seq:
-                fh_out1.write('>%s\n%s\n' % (name,seq))
-                fh_out2.write('%s\t%s\n' % (name,alen))
-                acount+=1
-            else:
-                empty_count+=1
-                pass
-        elif mode == 1:
-            if seq:
-                fh_out1.write('>%s\n%s\n' % (name,seq[::-1]))
-                fh_out2.write('%s\t%s\n' % (name,alen))
-                acount+=1
-            else:
-                empty_count+=1
-                pass
-        elif mode == 2:
-            if seq:
-                fh_out1.write('>%s\n%s\n' % (name,seq[::-1].translate(str.maketrans("TAGC","ATCG"))))
-                fh_out2.write('%s\t%s\n' % (name,alen))
-                acount+=1
-            else:
-                empty_count+=1
-                pass
-        elif mode == 3:
-            if seq:
-                fh_out1.write('>%s\n%s\n' % (name,seq.translate(str.maketrans("TAGC","ATCG"))))
-                fh_out2.write('%s\t%s\n' % (name,alen))
-                acount+=1
-            else:
-                empty_count+=1
-                pass
-        elif mode == 4:
-            if seq:
-                fh_out1.write('>%s\n%s\n' % (name,seq.translate(str.maketrans("TAGC","UAGC"))))
-                fh_out2.write('%s\t%s\n' % (name,alen))
-                acount+=1
-            else:
-                empty_count+=1
-                pass
-        elif mode == 5:
-            if seq:
-                fh_out1.write('>%s\n%s\n' % (name,seq.translate(str.maketrans("UAGC","TAGC"))))
-                fh_out2.write('%s\t%s\n' % (name,alen))
-                acount+=1
-            else:
-                empty_count+=1
-                pass
+        if alen > 200:
+            fh_out1.write('>%s\n%s\n' % (name,seq))
+            fh_out2.write('%s\t%s\n' % (name,alen))
+            acount+=1
         else:
-            print("Please enter correct mode")
+            empty_count+=1
             pass
 
-        acount+=1
+    #### Prepare a dictionary - Not Tested
+    # for line in fh_in:
+    #     if line.startswith('>'):
+    #       name          = line[1:].rstrip('\n').split()[0]
+    #       fastaD[name]  = ''
+    #     else:
+    #       fastaD[name]  += line.rstrip('\n').rstrip('*')
+
+    #### Write results - Not tested
+    # for name,seq in fastaD.items():
+    #     alen = len(seq)
+
+    #     if alen > 200:
+    #         fh_out1.write('>%s\n%s\n' % (name,seq))
+    #         fh_out2.write('%s\t%s\n' % (name,alen))
+    #         acount+=1
+    #     else:
+    #         empty_count+=1
+    #         pass
+
     
     fh_in.close()
     fh_out1.close()
@@ -589,14 +617,105 @@ def readMem(memFile):
 
     return None
 
+#### DE-DUPLICATOR MODULES ####
+def dedup_process(alib):
+    '''
+    To parallelize the process
+    '''
+    print("\n#### Fn: De-duplicater ###############")
+
+    afastaL     = dedup_fastatolist(alib)         ## Read
+    acounter    = deduplicate(afastaL )            ## De-duplicate
+    countFile   = dedup_writer(acounter,alib)   ## Write
+
+    return countFile
+
+def dedup_fastatolist(alib):
+    '''
+    New FASTA reader
+    '''
+
+    ### Sanity check
+    try:
+        f = open(alib,'r')
+    except IOError:                    
+        print ("The file, %s, does not exist" % (alib))
+        return None
+
+
+    ## Output 
+    fastaL      = [] ## List that holds FASTA tags
+
+    print("Reading FASTA file:%s" % (alib))
+    read_start  = time.time()
+    
+    acount      = 0
+    empty_count = 0
+    for line in f:
+        if line.startswith('>'):
+            seq = ''
+            pass
+        else:
+          seq = line.rstrip('\n')
+          fastaL.append(seq)
+          acount += 1
+
+    read_end    = time.time()
+    # print("-- Read time: %ss" % (str(round(read_end-read_start,2))))
+    print("Cached file: %s | Tags: %s | Empty headers: %ss" % (alib,acount,empty_count)) 
+
+    return fastaL
+                   
+def deduplicate(afastaL):
+    '''
+    De-duplicates tags using multiple threads and libraries using multiple cores
+    '''
+    dedup_start  = time.time()
+
+    # deList = [] ## Hold deduplicated tags and their abudnaces in a tuple
+
+    acounter    = collections.Counter(afastaL)
+
+    dedup_end  = time.time()
+    # print("-- dedup time: %ss" % (str(round(dedup_end-dedup_start,2))))
+
+    return acounter 
+
+def dedup_writer(acounter,alib):
+    '''
+    writes rtag count to a file
+    '''
+
+    print("Writing counts file for %s" % (alib))
+    countFile   = "%s.fas" % alib.rpartition('.')[0]  ### Writing in de-duplicated FASTA format as required for phaster-core
+    fh_out       = open(countFile,'w')
+
+    acount      = 0
+    seqcount    = 1 ## TO name seqeunces
+    for i,j in acounter.items():
+        # fh_out.write("%s\t%s\n" % (i,j))
+        fh_out.write(">seq_%s|%s\n%s\n" % (seqcount,j,i))
+        acount      += 1
+        seqcount    += 1
+
+    print("Total unique entries written for %s: %s" % (alib,acount))
+
+    fh_out.close()
+
+    return countFile
+
+#### MAIN ###################################################
+#############################################################
+
 def main(libs):
-    # global con
-    # con = ConnectToDB(server)
 
     ### Open the runlog
     runLog          = 'runtime_%s' % datetime.datetime.now().strftime("%m_%d_%H_%M")
     fh_run          = open(runLog, 'w')
     phaser_start    = time.time()
+
+    ### 0. Prepare index or reuse old #############
+    ###############################################
 
     ## Did user provided its index? If Yes Skip making memory files
     if not index:
@@ -607,13 +726,34 @@ def main(libs):
             genoIndex   = indexBuilder(reference)
             tend        = time.time()
             fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
+        
         else:
             currentRefHash = hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()
             readMem(memFile)
+            print('Current reference hash:               ',currentRefHash)
+            
+            #### Test #######
+            # if os.path.isdir(index.rpartition('/')[0]):
+            #     print("There is a folder names 'index'")
+            #     pass
+            
+            # if currentRefHash == existRefHash:
+            #     print("current ref. hash is same as exiting ref hash")
+            #     pass
+            # sys.exit()
+
             if currentRefHash == existRefHash:
-                print("Existing index matches the specified reference and will be used")
-                genoIndex = index
-                fh_run.write("Indexing Time: 0s\n")
+                print("Existing index matches the specified reference")
+                if os.path.isdir(index.rpartition('/')[0]):
+                    print("Index for matching reference found and will be used")
+                    genoIndex = index
+                    fh_run.write("Indexing Time: 0s\n")
+                else:
+                    print("Matching index could not be found and will be remade")
+                    tstart      = time.time()
+                    genoIndex   = indexBuilder(reference)
+                    tend        = time.time()
+                    fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
             else:
                 print("Existing index does not matches specified genome - It will be recreated")
                 tstart      = time.time()
@@ -633,13 +773,61 @@ def main(libs):
             fh_run.write("Indexing Time: 0s\n")
             pass
 
-    ### Start the phasing analysis ##########
 
-    ### 1. Make Folders
+    ### 1. Make Folders ###########################
+    ###############################################
     shutil.rmtree("%s" % (res_folder),ignore_errors=True)
     os.mkdir("%s" % (res_folder))
 
-    ### 2. Run Phaser
+    #### 2. File conversions#######################
+    ###############################################
+
+    if libFormat    == "F":
+        ### Convert FASTA to Tagcount
+        ### Sanity check
+        fh_in       = open(libs[0],'r')
+        firstline   = fh_in.readline()
+        if not firstline.startswith('>') and len(firstline.split('\t')) > 1:
+            print("** File doesn't seems to be in FASTA format")
+            print("** Please provide correct setting for @libFormat in 'phaser.set' settings file")
+            sys.exit()
+        else:
+            print("#### Converting FASTA format to counts #######")
+            dedup_start     = time.time()
+            ## TEST
+            # newList = []
+            # for alib in libs:
+            #     aname = dedup_process(alib)
+            #     newList.append(aname)
+            # libs = newList
+
+            libs            = PPResults(dedup_process,libs)
+            # print('Converted libs: %s' % (libs))
+            dedup_end       = time.time()
+            fh_run.write("FASTA conversion time:%ss\n" % (round(dedup_end-dedup_start,2)))
+        
+    elif libFormat  == "T": 
+        ### Can be used as-is, check if it is really 
+        ### Sanity check
+        fh_in = open(libs[0],'r')
+        firstline = fh_in.readline()
+        if firstline.startswith('>'):
+            print("** File seems tobe in FASTA format")
+            print("** Please provide correct setting for @libFormat in 'phaser.set' settings file")
+            sys.exit()
+        else:
+            # print("File seems to be in correct format")
+            pass
+
+    else:
+        print("** Please provide correct setting for @libFormat in 'phaser.set' settings file")
+        print("** If sRNA data is in tag count format use 'T' and for FASTA format use 'F' ")
+        sys.exit()
+
+
+    #### 3. Run Phaser ############################
+    ###############################################
+
     print('These are the libs: %s' % (libs))
     rawInputs = inputList(libs,runType,genoIndex,deg,nthread,noiseLimit,hitsLimit)
 
@@ -652,25 +840,28 @@ def main(libs):
 
     #### close runLog
     phaser_end = time.time()
-    fh_run.write(" Total analysis time:%ss\n" % (round(phaser_end-phaser_start,2)))
+    fh_run.write("Total analysis time:%ss\n" % (round(phaser_end-phaser_start,2)))
     fh_run.close()
 
 if __name__ == '__main__':
 
     ###Processors to use####
     if cores == 0 :## Use default 95% of processors as pool
-        nproc = int(multiprocessing.cpu_count()*0.90)
+        nproc = int(multiprocessing.cpu_count()*0.91)
     else:## As mannually entered by the user
         nproc = int(cores)
 
     ###############
-    checkuser()
+    checkUser()
+    checkDependency()
     # checkHost(allowedHost)
+    global reference
     libs        = readSet(setFile)
     nthread     = optimize(nproc)
-    main(libs)
-    print ('\n\n#### Phasing Analysis finished successfully')
-    print ("#### Please see '%s' folder for results\n" % (res_folder))
+    main(libs)    
+    print('\n\n#### Phasing Analysis finished successfully')
+    print("#### Results are in folder: %s" % (res_folder))
+    print("#### 'collapser' can be run by command: python3 collapser -dir %s\n" % (res_folder))
     sys.exit()
 
 ########### CHANGE LOG ########
@@ -721,6 +912,19 @@ if __name__ == '__main__':
 
 ## v090 -> v095
 ## Added the phaster-core production/installed path
+
+## v095 -> v099 [major]
+## Added de-duplication functions to handle FASTA file, and convert to required format
+## Modified FASTA clean module to implement a relatively faster method (should save a few minutes 2-4 depending on genome)
+## Updated runTYPEs - G,T and S modes
+## changed genoType to reference in settings reader
+## Fixed a buf while checking for previous index - index file was being looked instead of index directory, also added another md5 check to loop
+## Added a dependency checks
+## Updated script for updated version of phaster core files
+
+## v0.99 - v1.0
+## Updated the index builder function with optimized parameters. Now 6-8 minutes fater
+## Added a argument to run on low memory
 
 ## TO-DO
 ## Add automatic index resolution

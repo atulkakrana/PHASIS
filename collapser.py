@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.10 10/24/16
+## Updated: version-1.2 01/04/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 
@@ -10,13 +10,16 @@
 ### non-redundant set of phased loci. Also uniq phased loci from each library.
 ### Contact: atulkakrana@gmail.com
 
-import os,glob,sys,difflib,time,shutil,argparse,operator,datetime,subprocess,multiprocessing
-from operator import itemgetter
+import os,glob,sys,difflib,time,shutil,argparse
+import operator,datetime,subprocess,multiprocessing,re
 from multiprocessing import Process, Queue, Pool
+from operator import itemgetter
+from itertools import groupby
 
 ########### PHASER DEVELOPER SETTINGS ########
 
 setFile         = "phaser.set"
+memFile         = "collapser.mem"
 res_folder      = "summary_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))      ## Folder with all ther results
 cleanup         = 1
 cores           = 0
@@ -42,7 +45,7 @@ libcol          = 7
 
 phasiLenFilter  = 'N'                                               ## 'Y' then tags of phase length will be written from the cluster | 'N' - All tags will be written
 minAbun         = 1                                                 ## Minimum abundance of tag to be written
-matchThres      = 0.25                                              ## Ratio of match required by the cluster to phased loci | For transcripts, to capture biggest cluster like for mapping to IR, use a lower ratio so that longer transcript with smaller match ratio can be included
+matchThres      = 0.99                                              ## Ratio of match required by the cluster to phased loci | For transcripts, to capture biggest cluster like for mapping to IR, use a lower ratio so that longer transcript with smaller match ratio can be included
 startbuff       = 0                                                 ## While extracting sequence through coords2FASTA a buffer is added to start, 
                                                                     ## start position in phased ID has this buffer added, ## so minus this buffer 
                                                                     ## for better matching with real loci
@@ -51,18 +54,15 @@ startbuff       = 0                                                 ## While ext
 #### Command Line ##############################
 ################################################
 parser = argparse.ArgumentParser()
-
 flags = parser.add_argument_group('required arguments') ## Add required arguments to this group and optional to parser
 
 flags.add_argument('-dir',  default='None', type=str, help='directory from your'\
     'phaser run which need to be summarized. Required parameter', required=True)
-
 parser.add_argument('-pval',  default='1e-05', type=float, help='pvalue cutoff to '\
     'filter the phased siRNAs loci or transcipts. Optional parameter', required=False)
 
 # args = parser.parse_args()
 args = parser.parse_args()
-
 
 ## If no directory specified
 if args.dir == None:
@@ -73,7 +73,6 @@ if args.dir == None:
 ## If user add "/" at end of path, this is removed
 if args.dir.endswith("/"):
     args.dir = args.dir[0:-1]
-
 
 #### COLLAPSER FUNCTIONS ########################
 #################################################
@@ -133,10 +132,10 @@ def readSet(setFile):
                     libs = list(map(str,value.strip().split(',')))
                     print('User Input Libs:                 ',libs)
 
-                elif param.strip() == '@genoFile':
-                    global genoFile
-                    genoFile = str(value.strip())
-                    print('User Input genoFile:             ',genoFile)
+                elif param.strip() == '@reference':
+                    global reference
+                    reference = str(value.strip())
+                    print('User Input reference:             ',reference)
 
                 elif param.strip() == '@phase':
                     global phase
@@ -176,11 +175,11 @@ def pvaluereader():
     clustL      = [file for file in os.listdir("%s" % (args.dir)) if file.endswith ('.cluster')]
     pvalS       = set()
 
-    if not pvalS:
-        print("No *.cluster files found in specified directory:%s" % (args.dir))
-        print("pleas check ")
+    # if not pvalS:
+    #     print("No *.cluster files found in specified directory:%s" % (args.dir))
+    #     print("please check")
 
-    print("%s clusters cached")
+    print("%s clusters cached" % (len(clustL)))
     for aclust in clustL:
         # print(aclust,aclust.rsplit("_",4)[1])
         pval = float(aclust.rsplit("_",4)[1].replace('p',''))
@@ -207,13 +206,19 @@ def pvaluereader():
             break
         else:
             pass
-
+    # sys.exit()
     return pcutoff
 
 def prepare(pcutoff,libs,res_folder):
 
     print("\n#### Fn: prepare ############################")
     
+    ### Strip libs extension for matching ##############
+    libs_name = []
+    for i in libs:
+        alib = i.rsplit(".",1)[0]
+        libs_name.append(alib)
+
     ### Make a new folder ##############################
     ####################################################
     temp_folder = "./%s/%s" % (res_folder,"temp")
@@ -224,44 +229,55 @@ def prepare(pcutoff,libs,res_folder):
 
    ### Get files for collapser #########################
     listL      = [file for file in os.listdir("%s" % (args.dir)) if file.endswith ('.list')]
-    print(listL)
+    # print(listL)
+    print("%s list files found" % (len(listL)))
+    
     acount = 0 ### Count of library results copied to collapsed folder
     for alistF in listL:
-        alib    = alistF.rsplit(".",6)[0]
-        # print(alib)
-        if alib in libs:
+        alib    = alistF.rsplit(".",7)[0]
+        # print("alib:",alib)
+        if alib in libs_name:
+            print("copied for summarization:%s" % (alistF))
             acount += 1
             afile   = "%s/%s" % (args.dir,alistF)
             shutil.copy(afile,temp_folder)
+    # sys.exit()
 
     ### Get files for summarizer ######################
     ###################################################
     clustL      = [file for file in os.listdir("%s" % (args.dir)) if file.endswith ('.cluster')]
     combL       = []    ## List of file to be combined
     bcount      = 0     ## Counter for cluster files
-    print(clustL)
+    # print(clustL)
+    print("%s clust files found" % (len(clustL)))
     for aclust in clustL:
-        print(aclust)
+        # print("Clust File:",aclust)
         info    = aclust.rsplit("_",4)
-        print("Info:",info)
+        # print("-Info:",info)
         
         if len(info)==5: ### If there is some other file or contaminant then it is not considered, need better way to filter those out
-            alib    = info[0].rsplit('.',1)[0]
+            alib    = info[0].rsplit('.',2)[0]
+            # print("-alib:",alib)
             pval    = info[1].replace("p","")
             aphase  = info[3]
 
-            print(alib,pval,aphase)
-            if alib in libs and pval == str(pcutoff) and str(aphase) == str(phase): ## phase added to ensure that if user runs both 21 and 24-nt PHAS in same directory, the files from different then specific phase are not picked up
+            # print("-%s,%s,%s" % (alib,pval,aphase))
+            if (alib in libs_name) and (float(pval) <= float(pcutoff)) and (str(aphase) == str(phase)): ## phase added to ensure that if user runs both 21 and 24-nt PHAS in same directory, the files from different analysis are not picked up. 
+            ### V1.14 and above all cluster file for p-values less then the used are picked up, because collapser uses
+            ### files from all diffrent confodence levels. Also the matchThres for cluster and PHAS is increased to 0.8
+            ### because now files for all confidence are available so cluster should match at high cutoff, reducing number
+            ### of total clusters picked up
                 # print("--Cluster file found:%s" % (alib ))
                 # print("----Filename:%s | Lib:%s | pval = %s" % (aclust,libs,pval))
                 afile = "%s/%s" % (args.dir,aclust)
                 combL.append(afile)
                 bcount +=1
     # print("--%s cluster files captured for concatanation" % (len(combL)))
+    # print("There are files:",( [x.rpartition('/')[-1] for x in combL]))
 
     ### Concatanate these files #######################
     ###################################################
-    aname       = "%s/ALL.%sPHAS_p%s_srna.cluster" % (res_folder,aphase,pcutoff)
+    aname       = "%s/ALL.%sPHAS_p%s_srna.cluster" % (res_folder,aphase,pcutoff) ### Out file name
     clustfile   = FileCombine(combL,aname)
 
     ### Sanity Check ##################################
@@ -291,80 +307,77 @@ def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
 
     fh_out = open('PHASRedundant.log','w')
     ##Read files
-    if fileType == 'Y':
-        fls = glob.glob(r'./%s/*.YES.by.PARE.txt' % (temp_folder))
-    elif fileType == 'N':
-        fls = glob.glob(r'./%s/*.YES.by.PARE.txt' % (temp_folder))
+    if fileType     == 'Y':
+        fls         = glob.glob(r'./%s/*.YES.by.PARE.txt' % (temp_folder))
+    elif fileType   == 'N':
+        fls         = glob.glob(r'./%s/*.YES.by.PARE.txt' % (temp_folder))
     else:
-        fls = glob.glob(r'./%s/*converted.list' % (temp_folder))
+        ### This is used by default
+        fls         = glob.glob(r'./%s/*converted.list' % (temp_folder))
         
     #print (fls,'\n')
     #print ('Total files passed for redundancy removal: %s' % (len(fls)))
     
-    main_dict = {} ## declare empty dictionary
-    anum = 1 ## To name PHAS loci
+    main_dict   = {} ## declare empty dictionary
+    anum        = 1 ## To name PHAS loci
     for afile in fls: ###
         print ('**\nAnalyzing file: %s\n' % (afile))
-        tmp_dict = {}   ## Dictionary to store values for one file - recycled after every file
-        tmp_list = []   ## List to hol dall co-odinates before making a dictionary based on chromosme
-        neg_list = []   ## List to store keys that needs to be removed
-        fh_in = open(afile, 'r')
-        alib = afile.split('/')[-1].split('.')[0] ###
+        tmp_dict    = {}   ## Dictionary to store values for one file - recycled after every file
+        tmp_list    = []   ## List to hol dall co-odinates before making a dictionary based on chromosme
+        neg_list    = []   ## List to store keys that needs to be removed
+        fh_in       = open(afile, 'r')
+        alib        = afile.split('/')[-1].split('.')[0] ###
         # print ("File:",afile,"lib:",alib)
         
         shutil.rmtree('./temp',ignore_errors=True)
         os.mkdir('./temp')
-        outfile = './temp/PHAS_Uniq_%s' % (afile.split('/')[-1]) ### File to record unique entries of every library
-        fh_out2 = open(outfile,'w')
+        outfile     = './temp/PHAS_Uniq_%s' % (afile.split('/')[-1]) ### File to record unique entries of every library
+        fh_out2     = open(outfile,'w')
         
         ###First Instance - Fill up the dictionary with entries from first file
         if not main_dict.values(): ## First file will populate dictionary
             lines = [i for i in fh_in if i[:-1]] ## Remove empty lines one liner and read all with content
             
             for ent in lines:
-                ent_splt = ent.strip('\n').split('\t')
+                ent_splt    = ent.strip('\n').split('\t')
                 
                 if float(ent_splt[1]) == float(args.pval): ### Equals p-value cut-off specifed above
-                    key = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])    ### chrid, start and end makes a key
+                    key     = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])    ### chrid, start and end makes a key
                     
-                    chrid = ent_splt[2]
-                    start = int(ent_splt[3])
-                    end = int(ent_splt[4]) ## 1 added because when opening a range using start and end, end number is not included in range - - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
+                    chrid   = ent_splt[2]
+                    start   = int(ent_splt[3])
+                    end     = int(ent_splt[4]) ## 1 added because when opening a range using start and end, end number is not included in range - - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
                     
                     value = ((chrid,start,end),ent_splt,alib,key) ## Added key in value so that we don't need to make it later
-                    print("Key",key,"| Value",value)
-                    
-
+                    # print("Key",key,"| Value",value)
                     tmp_dict[key] = value
                     
 
-            main_dict.update(tmp_dict) ## Update the main dict
+            main_dict.update(tmp_dict) ## Update the main dict if this is the first file
 
         ## Second and further Instance - Match the entries of new file with dictioary and add new one #############
         else:                           ## Dictionary has keys and their values populated from first file and now remove redundancy
             lines = [i for i in fh_in if i[:-1]] ## Remove empty lines one liner
-            
             for ent in lines:
-                ratiodict= {}           ## Dictonary to hold ratios of comparision of this entry with all in dictionary
-                ent_splt = ent.strip('\n').split('\t')
+                ratiodict       = {}           ## Dictonary to hold ratios of comparision of this entry with all in dictionary
+                ent_splt        = ent.strip('\n').split('\t')
                 #print('\nCurrent entry:',ent_splt)
     
                 ### Compare with dict entries and get ratio
                 if float(ent_splt[1]) == float(args.pval): ### Check p-value cutoff
                     #print('Adding')
-                    new_chrid = ent_splt[2] ## Chromosome or transcript name
-                    new_start = int(ent_splt[3])
-                    new_end = int(ent_splt[4])  ### 1 added because when opening a range using start and end, end number is not included in range - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
-                    newRegion = list(range(new_start,new_end))
+                    new_chrid   = ent_splt[2] ## Chromosome or transcript name
+                    new_start   = int(ent_splt[3])
+                    new_end     = int(ent_splt[4])  ### 1 added because when opening a range using start and end, end number is not included in range - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
+                    newRegion   = list(range(new_start,new_end))
                     
                     ## print('matching')
-                    for i in main_dict.values():    ##Compare with all dictionary values
+                    for i in main_dict.values():    ## Compare with all dictionary values
                         #print(i)
-                        existKey = i[3]
+                        existKey    = i[3]
                         exist_chrid = i[0][0]
                         exist_start = i[0][1]
-                        exist_end = i[0][2]
-
+                        exist_end   = i[0][2]
                         if new_chrid == exist_chrid: ## Check if chr or transcript is same
                             #print (i, main_dict[i])
                             existRegion = list(range(exist_start,exist_end))
@@ -383,9 +396,9 @@ def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
                 ############################################################################################################################
                 ## Decide if entry is different enough to be added - Get the entry with max match to one being tested and make its key again
                 
-                existKey = max(ratiodict,key=ratiodict.get) ## Key from main_dict with max comparable ratio for current entry
-                maxratio = ratiodict[existKey]              ## Max ratio with the earlier phased locus
-                print("\n\n#####################")
+                existKey = max(ratiodict,key=ratiodict.get)         ## Key from main_dict with max comparable ratio for current entry
+                maxratio = ratiodict[existKey]                      ## Max ratio with the earlier phased locus
+                # print("\n\n#####################")
                 print(existKey.strip(),maxratio)                    ## If maxratio is zero same entry will appear again here
                 
                 
@@ -398,25 +411,24 @@ def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
                     tmp_dict[newKey]=newValue ## Life = one file
                     fh_out2.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (newValue[1][0],newValue[1][1],newValue[1][2],newValue[1][3],newValue[1][4],newValue[1][5],newValue[1][6])) ### Entries unique to each library - library name included in file name
     
-                    
                 elif maxratio > overlapCutoff: #### Choose the longest loci
-                    print('Selecting longest loci')
-                    print('Remade',existKey, 'New Key',newKey,)
+                    # print('Selecting longest loci')
+                    # print('Remade',existKey, 'New Key',newKey,)
                     achrid,astart,aend = existKey.rsplit("-",2) ## Start and end extracted from existKey because exist_start and exist_end belonged to last ent in dictionary and not the
                                                                 ## one with max overlaping existKey
-                    print ('Length of existing:%s | Length of new:%s' % ( (int(aend)-int(astart)+1), (int(new_end)-int(new_start)+1) ) )
+                    # print ('Length of existing:%s | Length of new:%s' % ( (int(aend)-int(astart)+1), (int(new_end)-int(new_start)+1) ) )
                     
                     if (int(exist_end)-int(exist_start)+1) < (int(new_end)-int(new_start)+1): ### New Loci is longer ------------------------>>>>>>>>>>>>>>>>>. Check
-                        print ('New phased loci is longer')
+                        # print ('New phased loci is longer')
                         neg_list.append(existKey)
                         tmp_dict[newKey]=newValue
                     
                     else: ## The loci in dictionary is longer
-                        print('Existing phased loci is longer or equal to new')
+                        # print('Existing phased loci is longer or equal to new')
                         pass
                 else:
 
-                    print('Redundant')
+                    # print('Redundant')
                     pass
                 
             main_dict.update(tmp_dict) ### Update the main dict
@@ -576,19 +588,235 @@ def compare(temp_folder,fileType):
     fh_out.close()
     return main_dict
 
-def writer_collapse(main_dict):
+def collapser(temp_folder,fileType):
     '''
-    Writes collapsed results
+    Master function that parses results files, makes a dictionary, checks overlap 
     '''
-    print ("\n#### Fn: Collapsed Writer #########################")
+    if fileType == 'L':
+        print('\nList files selected for analysis - Converting them to readable format')
+        fls     = glob.glob(r'./%s/*.PARE.validation.list' % (temp_folder))
+        print ('Here are the files that will be converted:',fls,'\n')
+        print ('Total files to analyze: %s' % (len(fls)))
+
+        ### Prepare first file for comaprision
+        firstfile = fls[0]
+        firstdict = dictmaker(firstfile)
+        sys.exit()
+        
+        ### Start the comaprision
+        compareflag == False
+        for fl in fls[1:]:
+            ## Prepare chr/scaffold/transcrpt specific dict of PHAS
+
+            if compareflag == False:
+                ## No cpmarision made yet this is the first and uses list directly from files
+                adict       = dictmaker(fl)
+                rawinputs   = inputmaker(firstdict,adict)
+
+
+    return None
+
+def mergePHAS(aninput):
+    '''
+    Takes two chr/scaffold and transcriptome specific lists and removes redundant PHAS - written to paralleized the process, and to reduce the numer of matchings required
+    '''
+    print ("\n#### Fn: PHAS collapser #########################")
+
+    alist,blist = aninput
+    # print("Alist",alist)
+    # print("Blist",blist)
+    main_dict   = {}    ## declare empty dictionary
+    tmp_dict    = {}    ## Dictionary to store values for one file - recycled after every file
+    tmp_list    = []    ## List to hold all co-odinates before making a dictionary based on chromosme
+    neg_list    = []    ## List to store keys that needs to be removed
+    # uniq_list   = []   ## List to hold values that are not found in firstfile i.e. unique to second file
+       
+    ### First List - Fill up the dictionary with entries from first file
+    ####################################################################
+    alib    = "nd" ## Not determined in latest version of collapser v1.13 onwards, kept for future addition
+    blib    = "nd"
+    
+    acount  =1
+    for anent in alist:
+        # print(anent)
+        key     = 'a-%s-%s-%s' % (anent[2],anent[3],anent[4])    ### 'a' added to diffrentiate the key from PHAS in different file that have same coordinates. Key is 'a',chrid, start and end makes a key - 01/03/2017
+        chrid   = anent[2]
+        start   = int(anent[3])
+        end     = int(anent[4]) ## 1 added because when opening a range using start and end, end number is not included in range - - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
+
+        value = ((chrid,start,end),anent,alib,key) ## Added key in value so that we don't need to make it later
+        # print("Key",key,"| Value",value)
+        tmp_dict[key] = value
+        acount+=1
+    
+    ### Prepare dict for comaprision
+    main_dict.update(tmp_dict) ## Update the main dict if this is the first file
+    # xdict   = main_dict.copy()
+    # xcount  = len(main_dict)
+
+    ### Start comparision with second file
+    ######################################
+    bcount = 0 ## Count entries in bfile
+    for ent_splt in blist:
+        # print(ent_splt)
+        bcount          +=1
+        ratiodict       = {}                                ## Dictonary to hold ratios of comparision of this entry with all in dictionary
+
+        #### Compare with dict entries and get ratio
+        new_chrid   = ent_splt[2]                           ## Chromosome or transcript name
+        new_start   = int(ent_splt[3])
+        new_end     = int(ent_splt[4])                      ## 1 added because when opening a range using start and end, end number is not included in range - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
+        newRegion   = list(range(new_start,new_end))
+        newKey      = 'b-%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4]) ### 'b' added to diffrentiate the key from PHAS in different file that have same coordinates. Key is 'b',chrid, start and end makes a key - 01/03/2017
+        newValue    = ((new_chrid,new_start,new_end),ent_splt,blib,newKey) 
+        
+        #### Find a match for this PHAS in first file
+        for i in main_dict.values():                         ## Compare with all dictionary values
+            #print(i)
+            existKey    = i[3]
+            exist_chrid = i[0][0]
+            exist_start = i[0][1]
+            exist_end   = i[0][2]
+            if new_chrid == exist_chrid:                     ## Check if chr or transcript is same
+                existRegion = list(range(exist_start,exist_end))
+                sm          = difflib.SequenceMatcher(None,existRegion,newRegion)
+                ratiodict[str(existKey)]=round(sm.ratio(),2) ## Make a dict of main dict entries and their comparision ratio with current new entry
+
+            else:
+                ### None found
+                ratiodict[str(existKey)]=round(0.00,2)       ## None of the existing entry matches with the current ones
+                pass
+
+        
+        #### Decide if entry is different enough to be added
+        ####################################################
+        
+        existKey = max(ratiodict,key=ratiodict.get)          ## Key from main_dict with max comparable ratio for current entry
+        maxratio = ratiodict[existKey]                       ## Max ratio with the earlier phased locus
+        # print("\n\n#####################")
+        # print(existKey.strip(),maxratio)                     ## If maxratio is zero same entry will appear again here
+        
+        if maxratio <= overlapCutoff:
+            ## Overlap is less then cutoff, treat as new loci, no need to delete any entry from existing PHAS
+            tmp_dict[newKey]=newValue                       ## Life = one file
+            # print('Adding new loci')
+
+        elif maxratio > overlapCutoff: 
+            ## Choose the longest loci between the matching two
+            # print('Selecting longest loci')
+            # print('Remade',existKey, 'New Key',newKey,)
+            uniqid,achrid,astart,aend = existKey.rsplit("-",3)     ## Start and end extracted from existKey because exist_start and exist_end belonged to last ent in dictionary and not the one with max overlaping existKey
+            existLen    = (int(aend)-int(astart)+1)
+            newLen      = (int(new_end)-int(new_start)+1)
+            # print ('Length of existing:%s | Length of new:%s' % (existLen,newLen) )
+            
+            if newLen > existLen : ### New Loci is longer
+                # print ('New phased loci is longer')
+                neg_list.append(existKey)
+                tmp_dict[newKey]=newValue
+            
+            else: ## The loci in dictionary is longer
+                # print('Existing phased loci is longer or equal to new - No updates made')
+                pass
+        else:
+            # print('Redundant')
+            pass
+    
+    main_dict.update(tmp_dict) ### Update the main dict with new non-overlapping PHAS
+    # ydict   = main_dict.copy()
+    # ycount  = len(main_dict)
+        
+    ######################## Test ####################
+    ##print ('Dictionary')
+    #fh_test = open('keysTest','w')
+    #for i in main_dict.keys():
+    #    #print (i)
+    #    fh_test.write('%s\n' % i)
+    #print ('\nLength of dictionary: %s' % (len(main_dict)))
+    #
+    #
+    #fh_test2 = open('NegKeytest', 'w')
+    #for i in neg_list:
+    #    fh_test2.write('%s\n' % i)
+    #print ('Length of negative list: %s' % (len(neg_list)))
+    ################################################
+    
+    #### Remove keys in negative list
+    # print("\n### Merging complete - Now removing the redundant entries")
+    # print(blist)
+    neg_set = set(neg_list) ## This will remove redudant entry picked from different confidence levels
+    for akey in neg_set:
+        # print ("To be removed:%s" % (akey))
+        try:
+            del main_dict[akey]
+            # print (akey, '\nKey found in main dict and is being removed')
+        except KeyError:
+            # print (akey, '\nKey not found') ### This could be many if p-value cutoff includes different confidence levels (<=)
+                                            ### Suppose bfile has same PHAS loci from different p-vals then the first instance in neg_list will seek and delete matching PHAS but other instances (of different p-val) will not find that key - tested OK
+            pass
+
+    print ("### Number of merged phased loci for %s: %s" % (chrid,len(main_dict)))
+
+    # print("\n*** FIRST DICT", [x for x in xdict.keys()])
+    # print("*** SECOND DICT",[y for y in ydict.keys()])
+    # print("\n*** NEG SET",neg_set)
+    # print("*** NEG LIST",neg_list)
+    # print("\n###### First File: chr:%s | entries:%s" % (chrid,acount))
+    # print("###### Second File: chr:%s | entries:%s" % (new_chrid,bcount))
+    # print("###### Before collapsed entries:%s | Collapsed entries:%s | After removal of neg set:%s" % (xcount,ycount,len(main_dict)))
+
+    return main_dict
+
+def writer_collapse(collapsedL):
+    '''
+    Writes collapsed results - updated with v1.13 to handle chr/scaffold or trascript wise grouped results
+    '''
+
+    print ("\n#### Fn: Collapsed Writer ############")
+
     outfile1    = "./%s/%sPHAS_p%s_collapsed.txt" %     (res_folder,phase,args.pval)
     fh_out1     = open(outfile1,'w')
+    fh_out1.write('Name\tp-val\tChr\tStart\tEnd\tStrand\tLib\n')
     outfile2    = "./%s/%sPHAS_p%s_collapsed.list" %    (res_folder,phase,args.pval)
     fh_out2     = open(outfile2,'w')### For our Genome viewer, No header required
-    # outfile3    = "./%s/Final_PHASLociID_%s_%s.ping" % (res_folder,args.pval,res_folder)
-    # fh_out3     = open(outfile3,'w')
+
+   
+    ### Default list mode - updated in v1.13 
+    if fileType == "L":
+
+        finalphasL      = []    ## List to store cleaner PHAS results
+        acount          = 0     ## Count of merged PHAS
+        for achr in collapsedL: ## achr is a dict with key: chr-start-end and values: [((chr,start,end),(phase,p-val,chr,start,end),filename,chr-start-end),(....)]
+            if achr:                 ## Not empty
+                phasL   = [x for x in achr.values()]
+                for aphas in phasL:
+                    # print(aphas)
+                    apval       = aphas[1][1]
+                    achr        = aphas[1][2]
+                    astart      = aphas[1][3]
+                    aend        = aphas[1][4]
+                    astrand     = "NONE"
+                    alib        = aphas[2]    
+                    finalphasL.append((apval,achr,astart,aend,astrand,alib))
+                    acount+=1
+
+        # print("%s results prepared for writing" % (acount))
+
+        ## Sort results on number of chromsomes/scaffolds or transcripts
+        finalphasL_s    = sorted(finalphasL, key=lambda x: int(x[2]), reverse=False ) ## on start site
+        finalphasL_s2   = sorted(finalphasL_s, key=lambda x: '{0:0>8}'.format(x[1]).lower()) ## sort on chr/scaffold or trans
+        
+        ## write results
+        anum    = 1    ## For naming PHAS
+        for ares in finalphasL_s2:
+            # print(ares)
+            fh_out1.write('Phas-%s\t%s\n' % (anum,"\t".join(ares)))
+            fh_out2.write('%s.%s.%s\n' % (ares[1],ares[2],ares[3]))
+            anum +=1
+
     
-    if fileType == 'C':
+    ### Compare mode files not updated in v1.13
+    elif fileType == 'C':
         fh_out1.write('Name\tp-val\tChr\tStart\tEnd\tStrand\tLib\tfileName\n')
         for value in main_dict.values():
             print(value)
@@ -596,75 +824,311 @@ def writer_collapse(main_dict):
             fh_out1.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (value[1][0],value[1][1],value[1][2],value[1][3],value[1][4],value[1][5],value[1][6],value[2]))
             fh_out2.write('%s.%s.%s\n' % (value[1][2],value[1][3],value[1][4]))
             # fh_out3.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (value[1][0],value[1][1],value[1][2],value[1][3],value[1][4],value[1][5],value[1][6]))
-        
+
+    
     else:
-        fh_out1.write('Name\tp-val\tChr\tStart\tEnd\tStrand\tLib\n')
-        anum = 1
-        for value in main_dict.values():
-            # print(value)
-            #print('Phas-%s\t%s\t%s\t%s\t%s\t%s\n' % (anum,value[1][1],value[1][2],value[1][3],value[1][4],value[1][6]))
-            fh_out1.write('Phas-%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (anum,value[1][1],value[1][2],value[1][3],value[1][4],value[1][6],value[2]))
-            fh_out2.write('%s.%s.%s\n' % (value[1][2],value[1][3],value[1][4]))
-            # fh_out3.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (value[1][0],value[1][1],value[1][2],value[1][3],value[1][4],value[1][5],value[1][6]))
-            anum +=1
+        print("Unknown 'fileType' - Developer's error")
+        print("Please report issue here: https://github.com/atulkakrana/phasTER/issues")
+        sys.exit()
+
+    print("Total collapsed PHAS after merging:%s" % (len(finalphasL)))
             
     fh_out1.close()
     fh_out2.close()
     # fh_out3.close()
     return outfile1,outfile2
 
-def listConverter(temp_folder,fileType):
+def listConverter(afile):
+    '''
+    Parses phaster-core results file
+    '''
+
+    print("\n#### Fn: listConvertor ####################")
+
+    fh_in   = open(afile,'r')
+    fh_out  = open('%s_converted.list' % (afile.rpartition('.')[0]),'w')
+    entries = fh_in.readlines()
+
+    #### Prepare PHAS list
+    alist   = []    ## List to hold PHAS entries
+    for i in entries:
+        if i.strip(): ## Remove an empty line from end file
+            ent_splt         = i.strip('\n').split('=')
+            pval,phase,trash = ent_splt[0].strip().split('|')
+            chromo_start,end = ent_splt[1].strip().split('..')
+            chromo,sep,start = chromo_start.rpartition(':')
+            if float(pval) <= float(args.pval):
+                if runType      == 'G':
+                    fh_out.write('%s\t%s\t%s\t%s\t%s\tNONE\tNONE\n' % (phase,pval,chromo.strip(),start,end)) ##Chromosome has space before it which later gives error while key matching
+                    alist.append((phase,pval,chromo.strip(),start,end))
+                elif runType    == 'T' or runType == 'S': ## Header has lots of stuff
+                    fh_out.write('%s\t%s\t%s\t%s\t%s\tNONE\tNONE\n' % (phase,pval,chromo.strip(),start,end)) ##Chromosome has space before it which later gives error while key matching
+                    alist.append((phase,pval,chromo.strip(),start,end))
+                else:
+                    pass
+    print("%s elements in PHAS list from %s file" % (len(alist),afile))
     
-    print("\n#### Fn: listconverter ############################")
-    print(temp_folder)
+    fh_in.close()
+    fh_out.close()
+    
+    return alist
 
-    if fileType == 'L':
-        print('\nList files selected for analysis - Converting them to readable format')
-        fls = glob.glob(r'./%s/*.PARE.validation.list' % (temp_folder))
-        print ('\nHere are the files that will be converted:',fls,'\n')
-        print ('Total files to analyze: %s' % (len(fls)))
-        for fl in fls:
-            fh_in = open(fl,'r')
-            fh_out = open('%s_converted.list' % (fl.rpartition('.')[0]),'w')
-            entries = fh_in.readlines()
-            for i in entries:
-                if i.strip(): ## Remove an empty line from end file
-                    ent_splt = i.strip('\n').split('=')
-                    #print(ent_splt[0].split('|'))
-                    pval,phase,trash = ent_splt[0].strip().split('|')
-                    chromo_start,end = ent_splt[1].strip().split('..')
-                    chromo,sep,start = chromo_start.rpartition(':')
+def groupPHAS(PHASlist):
+    '''
+    Prepares a chr/scaffold and transcript specific dictionary from a PHAS list (mode 0) or PHAS merge results (mode 1)
+    '''
+    print("\n#### Fn: groupPHAS ####################")
 
-                    if runType      == 'Y':
-                        fh_out.write('%s\t%s\t%s\t%s\t%s\tNONE\tNONE\n' % (phase,pval,chromo.strip().replace('chr',''),start,end)) ##Chromosome has space before it which later gives error while key matching
-                    elif runType    == 'N': ## Header has lots of stuff
-                        fh_out.write('%s\t%s\t%s\t%s\t%s\tNONE\tNONE\n' % (phase,pval,chromo.strip(),start,end)) ##Chromosome has space before it which later gives error while key matching
 
-            fh_in.close()
-            fh_out.close()
+    #### Prepare grouped list from a list of PHAS corresponding to the chr/scaffolda and transcript
+    adict       = {} ### Grouped dict
+    groupL      = [] ### List to store grouped PHAS
+    PHASlist_s  = sorted(PHASlist,key = itemgetter(2))
+    agrps       = groupby(PHASlist_s, itemgetter(2))
+
+    acount      = 0 ### Counts uniqe groups i.e. chr/scaffolds/transcripts
+    for (key, data) in agrps:
+        # print("KEY:",key)
+        # print("PHAS",data)
+        dataL  = [] ### group specific PHAS
+        for i in data:
+            dataL.append(i)
+        groupL.append((key,dataL))
+        acount+=1
+
+    ### For test
+    # for i in groupL:
+    #     print("KEY",i[0])
+    #     print("DATA",i[1])
         
-    if fileType == 'C':
-        print('\nList files selected for analysis - Converting them to readable format')
-        fls = glob.glob(r'./%s/*.csv' % (temp_folder))
-        print ('\nHere are the files that will be converted:',fls,'\n')
-        print ('Total files to analyze: %s' % (len(fls)))
-        for fl in fls:
-            fh_in = open(fl,'r')
-            header = fh_in.readline()
-            fh_out = open('%s_converted.list' % (fl),'w')
-            entries = fh_in.readlines()
-            for i in entries:
-                if i.strip(): ## Remove an empty line from end file
-                    ent_splt = i.strip('\n').split('\t')
-                    #print(ent_splt[0].split('|'))
-                    name,pval,chromo,start,end,strand,Lib = i.strip('\n').split('\t')
-                    fh_out.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (name,pval,chromo,start,end,strand,Lib))##Chromosome has space before it which later gives error while key matching
-            fh_in.close()
-            fh_out.close()
-    else:
-        pass
+    print("Groups identified:%s" % (acount))
+
+
+    return groupL
+
+def selfMerge(dictitems):
+    '''
+    For each library remove redudant loci either from dfferent p-values or lengths. Input is chr/scaffold and transcript specific list
+    '''
+    print("\n#### Fn: selfMerge ####################")
+    chrkey,chrvalL  = dictitems ### Value is grouped list from python
+    nonredundantL   = [] ### Final PHAS list
+    processedL      = [] ### Keys for identifiers either processed or redundant
+
+    print("++ Merging %s PHAS for chr:%s" % (len(chrvalL),chrkey))
+    # print("and values",chrvalL)
+    for aphas in chrvalL:
+        # print("\nTo be merged:",aphas)
+        aname,apval,achr,astart,aend = aphas
+        akey    = "%s-%s-%s" % (astart,aend,apval) ### Assumption is that key will be unique due to pval, even if cordinates are same
+        aregion = list(range(int(astart),int(aend)))
+        tempD   = {} ### Stores key and full PHAS entry for overlapping PHAS to write results
+        tempL   = [] ### Stores p-values and length for overlapping PHAS to make a decision
+        
+        if akey not in processedL:
+            ### This PHAS is not compared yet or this didn't overlapped with anyone yet
+            processedL.append(akey) ### MArk this processed
+
+            ### Find overlapping PHAS
+            ########################
+            for bphas in chrvalL:
+                bname,bpval,bchr,bstart,bend = bphas
+                bregion = list(range(int(bstart),int(bend)))
+                sm      = difflib.SequenceMatcher(None,aregion,bregion)
+                aratio  = round(sm.ratio(),2)
+
+                if aratio > 0.40:
+                    ## Some overlap found cache the PHAS and other parameters
+                    bkey        = "%s-%s-%s" % (bstart,bend,bpval)
+                    blength     = int(bend)-int(bstart)
+                    tempD[bkey] = bphas
+                    tempL.append((bkey,bpval,blength)) 
+
+
+            ### Choose the best candidate
+            #############################
+            if tempL:
+                ### There were a few overlapping PHAS
+                # print("%s overlaps found" % (len(tempL)))
+                # print("Overlaps",tempL)
+                tempL_s = sorted(tempL, key=lambda x: float(x[1]), reverse=False)
+                
+                ### Choose on best p-value
+                if float(tempL_s[0][1]) < float(tempL_s[-1][1]):
+                    # print("Sorted on p-val",tempL_s)
+                    # print("Best candidate selected on p-val (%s)" % ((tempL_s[0][1])))
+                    ### There were more then one overlap and btter p-val exists
+                    ### If the ent itself is best then it will be added to final 
+                    ### output otherwise others will be chosen
+                    finalkey = tempL_s[0][0]
+                    finalval = tempD[finalkey]
+                    nonredundantL.append(finalval)
+
+                    ### Trash the rest of keys i.e. these are never checked again for overlap
+                    for i in tempL_s[1:]:
+                        processedL.append(i[0])
+
+                else:
+                    ### Choose the one with longest length. This works even if there is just one 
+                    ### overlap with self
+                    tempL_s = sorted(tempL, key=lambda x: int(x[2]), reverse=True)
+                    # print("Sorted on lengths",tempL_s)
+                    # print("Best candidate selected on length (%s nt)" % (tempL_s[0][2]))
+                    finalkey = tempL_s[0][0]
+                    finalval = tempD[finalkey]
+                    nonredundantL.append(finalval)
+
+                    ### Trash the rest of keys i.e. these are never checked again for overlap
+                    for i in tempL_s[1:]:
+                        processedL.append(i[0])
+
+            else:
+                ### No  overlap for query PHAS
+                # print("No overlap - Unique PHAS")
+                nonredundantL.append(aphas) ### Included in results
+                continue
+        else:
+            # print("Compared already, best candidate cached")
+            pass
+
+    # print(nonredundantL)
+    print("Group:%s | Total PHAS:%s | Nonredundant PHAS:%s" % (chrkey,len(chrvalL),len(nonredundantL)))
+
+    return chrkey,nonredundantL
+
+def listTocollapsed(alist):
+    '''
+    Converts non-redundant list of PHAS from first file to 
+    a faux collapsed list for writing results in case there is just one file
+    and no comaprision will be done
+    '''
     
-    return None
+    collapsedL = [] ## List of dicts and format is key: chr-start-end and values: [((chr,start,end),(phase,p-val,chr,start,end),filename,chr-start-end),(....)]
+
+    acount = 0      ## Total PHAS from all chr/scaffolds and trans
+    for achr,avals in alist:
+        ## Prepare a dict for this chr/scaffold or trans
+        chrD = {} ## Hold resuts for specific chr/scaffold or transcriptome
+        for aphas in avals:
+            acount +=1
+            achr    = aphas[2]
+            astart  = aphas[3]
+            aend    = aphas[4]
+            afile   = "nd"
+            akey    = "%s-%s-%s" % (achr,astart,aend)
+            # print(akey)
+            aval    = ((achr,astart,aend),(aphas),afile,akey)
+            # print(aval)
+            # collapsedL.append(aval)
+            chrD[akey] = aval
+
+        ## Add to a list as results from different chr/scaffolds and transcriptome are reported by PPresults
+        collapsedL.append(chrD)
+
+    print("Groups in List:%s | Groups in collapsed format list:%s" % (len(alist),len(collapsedL)))
+    print("Total PHAS:%s" % (acount))
+
+    return collapsedL
+
+def collapsedToDict(alist):
+    '''
+    Takes a collapsed list and converts to a dict format as required for next comaprision
+    '''
+
+    print("\n#### Fn: collapsedToDict ##############")
+    ### The list of results for different chr/scaffold an transcript has merged PHAS results in form of dict [(chr 1 results as dict),(chr 2 results as dict)....]
+    ### Where key: chr-start-end and values: [((chr,start,end),(phase,p-val,chr,start,end),filename,chr-start-end),(....)]
+    ### The dicts are already grouped based on chr/scaffold and transcript unlike mode=0
+    acount  = 0     ### Counts uniqe groups i.e. chr/scaffolds/transcripts
+    adict   = {}    ### Grouped dict like mode 0
+    for achr in alist:
+        ### achr is dict for specific chr/scafold and trans from PHAS merge
+        if achr: ### It could be empty
+            # print("## Collapsed list values")
+            # print("\n",achr.values())
+            phasL   = [x for x in achr.values()]
+            # print("Len of phasL:%s " % len(phasL))
+            key     = phasL[0][0][0]    ### Steal the chromosme/scaffold or transcriptome id from first entry
+            groupL  = []                ### This will store extracted info from every PHAS entry
+            for ent in phasL:
+                aphas = ent[1]          ### ent[1] is ('24', '1e-05', '10', '11746264', '11746693')
+                groupL.append(aphas)
+
+            # print("\n Mode1 groupL:",groupL) ## TO check if structure is same as mode 0
+            adict[key] = groupL
+            acount+=1
+    print("Length of collapsed dict:%s | and unique entities:%s" % (len(adict),acount))
+    # print("Keys:",(adict.keys()))
+    # print("Values:",(adict['1']))
+
+    return adict
+
+def inputMaker(adict,bdict):
+    '''
+    prepares a chr/scaffold and transcript-wise list from set of two collapsed dicts. Last entry of chr/scaffold and transcriptome speciifc list is the filename
+    '''
+    print ("\n#### Fn: inputMaker ##################")
+    ### Get unique keys i.e. chr/scaffolds and transcripts from both lists
+    rawinputs   = []    ## This will hold matching tuples i.e. for a unique chr/scaffold or trascriptome that will be used for comaprisions
+    keyset      = set() ## a set of unique keys from both dicts   
+
+    # print("Keys:",(adict.keys()))
+    # print("Values:",(adict['1']))
+
+    ## Trim filenames
+    # # print(afile)
+    # aname = afile.rpartition('/')[-1].rsplit(".",6)[0] ### Filename 2600_chopped.txt.cluster.boundary.without.PARE.validation.list
+    # bname = bfile.rpartition('/')[-1].rsplit(".",6)[0]
+
+    ### Get unique keys
+    akeys = adict.keys()
+    bkeys = bdict.keys()
+    
+    for x in akeys:
+        keyset.add(x)
+    for y in bkeys:
+        keyset.add(y)
+
+    print("Total unique keys from both lists:%s" % (len(keyset)))
+    # print(keyset)
+
+    acount = 0 ## Count of unique identifiers for which PHAS found
+    bcount = 0 ## Count of unique identifiers for which PHAS found
+    for key in keyset:
+        print ("Preparing inputs for merging for key:%s" % (key))
+        
+        #### Values from alist
+        try:
+            avals = adict[key]
+            # print (key, '\nKey found in adict and its PHAS fetched')
+            acount+=1
+        except KeyError:
+            # print (key, '\nKey not found')
+            avals = []    ## Temp. lists for values from specific chr/scaffold or trascriptome 
+            pass
+
+        #### Values from blist
+        try:
+            bvals = bdict[key]
+            # print (key, '\nKey found in bdict and its PHAS fetched')
+            bcount+=1
+        except KeyError:
+            print (key, '\nKey not found')
+            bvals = []    ## Temp. lists for values from specific chr/scaffold or trascriptome
+            pass
+
+        ### Add these chr/scaffold or tramscriptome specific PHAS to rawinputs
+        # avals.append(aname)
+        # bvals.append(bname)
+        rawinputs.append((avals,bvals))
+        # print(rawinputs[0])
+        # sys.exit()
+
+
+    # print("Unique identifiers in rawinputs:%s" % (len(rawinputs)))
+    print("Unique identifiers for PHAS in A:%s | B:%s" % (acount,bcount))
+
+    return rawinputs
 
 #### SUMMARIZER #################################
 #################################################
@@ -694,7 +1158,7 @@ def PHASreader(coordsfile):
             aname           = coords[namecol-1]
             apval           = coords[pvalcol-1]
             alib            = coords[libcol-1].strip('\n')
-            get_chr_id      = fusedcoords[0].replace("chr","").replace("Chr","")
+            get_chr_id      = fusedcoords[0]
             astart          = fusedcoords[1]
             aend            = fusedcoords[2]
             get_start       = int(astart)+startbuff                         ## It should be added to reduce length of loci
@@ -713,7 +1177,7 @@ def PHASreader(coordsfile):
             get_start       = int(int(astart)+startbuff)
             get_end         = int(aend)+1                                       ## 1 added because when opening a range using start and end, end number is not included in range
             phasID          = '%s_%s_%s' % (get_chr_id,astart,aend)             ## Name to be used in output file
-            print("Phased Loci: %s #######################################################" % (phasID))
+            # print("Phased Loci: %s #######################################################" % (phasID))
             phasCount       += 1
 
         else:
@@ -725,22 +1189,6 @@ def PHASreader(coordsfile):
     print("Entries read:%s | Entries cached:%s" % (phasCount,len(phasList)))
 
     return phasList,phashead
-
-# def prepareDicts(libs):
-    # '''
-    # prepares tag count dictionaries by using readFileToDict
-    # '''
-
-    # print("\n#### Fn: prepareDics #################")
-    
-    ## Initialize the result dictionary list for results
-    # dictList    = []
-
-    # # Utilize a code for the dictionary to identify the 
-    # indexList   = list(range(len(libs)))
-    # dictList    = PPResults(readFileToDict, indexList)
-
-    # return dictList
 
 def getClust(clustfile,phasList):
 
@@ -760,7 +1208,7 @@ def getClust(clustfile,phasList):
         # print(ent)
         aname,apval,alib,phasID,get_chr_id,get_start,get_end,get_value = ent
         # print("This is the PhasId: %s | values:%s" % (phasID,get_value))
-        print("\n\nPhaseID being queried:%s ##############" % (phasID))
+        print("\n\nPhaseID being queried for cluster:%s ##############" % (phasID))
         phasCount +=1 
         print("%s/%s phasID" % (phasCount,len(phasList)))
 
@@ -773,15 +1221,15 @@ def getClust(clustfile,phasList):
             aclust_splt     = aclust.split('\n')
             header          = aclust_splt[0].split()
             clust_id        = header[2]
-            chr_id          = header[6].replace("chr","").replace("Chr","")
+            chr_id          = header[6]
             start           = header[10]
             end             = int(header[12])+1 ##1 added because when opening a range using start and end, end number is not included in range
             value           = (list(range(int(str(start)),int(str(end)))))
             # print ('Cluster:', (value))
 
-            if runType == 'Y':                 ## Normal genomic coordinates with integer chr_id
+            if runType == 'G':                 ## Normal genomic coordinates with integer chr_id
                 # print(chr_id)
-                get_chr_id  = str(get_chr_id).replace("chr","").replace("Chr","")
+                # get_chr_id  = str(get_chr_id)
                 get_chr_id  = int(get_chr_id)
                 chr_id      = int(chr_id)
             else:
@@ -798,8 +1246,8 @@ def getClust(clustfile,phasList):
                 
                 if round(sm.ratio(),2) >= matchThres:
                     ### Matched - phasiRNA from this cluster
-                    print ('\nMatching cluster found:%s' % ''.join(header))
-                    print("Allowed Ratio:%s | Current Ratio:%s" % (matchThres,aratio))
+                    # print ('\nMatching cluster found:%s' % ''.join(header))
+                    # print("Allowed Ratio:%s | Current Ratio:%s" % (matchThres,aratio))
                     matchCount  +=1
                     
                     phasiCyc    = 0    ## Stores phasing cycles
@@ -835,7 +1283,7 @@ def getClust(clustfile,phasList):
                     sizeRatio   = round(phasiSig/(phasiSig+otherSig),2) 
                     bestkval    = max(kvalsL) ## Best k-value achieved by this cluster
                     # print("Current Cycles:%s | Current sig. strength:%s" % (phasiCyc,phasiSig))
-                    print("Current Cycles:%s | Current sig. strength:%s" % (bestkval,phasiSig))
+                    # print("Current Cycles:%s | Current sig. strength:%s" % (bestkval,phasiSig))
                     tempMatchList.append((bestkval,phasiSig,phasID,clust_id,sizeRatio))
 
                     ## Decide the best and remove other from list ##############################
@@ -844,21 +1292,21 @@ def getClust(clustfile,phasList):
                         ## There exists a previosly matched cluster
                         exist_bestkval = finalMatchList[-1][0]
                         exist_phasiSig = finalMatchList[-1][1]
-                        print("Existing Cycles:%s | Existing sig. strength:%s" % (exist_bestkval,exist_phasiSig))
+                        # print("Existing Cycles:%s | Existing sig. strength:%s" % (exist_bestkval,exist_phasiSig))
 
                         if bestkval > exist_bestkval: ## New cluster has more cycles
                             del finalMatchList[0:]
                             finalMatchList = list(tempMatchList)
-                            print("--- New cluster selected ---")
+                            # print("--- New cluster selected ---")
 
                         elif bestkval == exist_bestkval: ## Both have same cycles
                             if phasiSig > exist_phasiSig: ## New one has more total abundance of phased siRNAs
                                 del finalMatchList[0:]
                                 finalMatchList = list(tempMatchList)
-                                print("--- New cluster selected ---")
+                                # print("--- New cluster selected ---")
                         
                         else: ## Existing/old one was long i.e. had more cycles
-                            print("Earlier recorded cluster is retained")
+                            # print("Earlier recorded cluster is retained")
                             pass
 
                     else: ## This is the first cluster
@@ -890,14 +1338,16 @@ def getClust(clustfile,phasList):
 
 def allphasiWriter(clustfile,resList):
     '''
-    This takes all the phasiRNAs on a transcript and return unique phasiRNAs file from all clusters - You need thos file for study of precursors
+    This takes all the phasiRNAs on a transcript and return unique phasiRNAs file from all clusters - You need those file for study of precursors. phasiRNAs need to unique'd because in cases of foldback same phasiRNAs could match to 5'-w and 3'-c
     '''
 
-    print("\n\nFunction:allphasiWriter\n")
+    print("\n#### Function:allphasiWriter ##########")
 
     outfile         = "%s_thres%s_allphasi.csv" % (clustfile.rpartition(".")[0],matchThres)
     # outfile2        = outfile = clustfile+'thres_%s_allphasi.csv' % matchThres                       ## 2437.txt.score_p1e-07_sRNA_21_out.cluster
-    fh_out          = open(outfile2,'w')
+    fh_out          = open(outfile,'w')
+    # print(outfile)
+    # sys.exit()
 
     ## Find entries with unique seq
     for ent in resList: ## entry corresponds to one phased loci
@@ -940,7 +1390,7 @@ def allphasiWriter(clustfile,resList):
     print("\n\nExiting :allphasiWriter\n")
 
 
-    return outfile2
+    return outfile
 
 def writer_summ(clustfile,resList,dictList):
     '''
@@ -948,9 +1398,7 @@ def writer_summ(clustfile,resList,dictList):
     '''
     print("\n#### Fn:Writer_summ #################")
 
-    outfile = "%s_thres%s_phasi.csv" % (clustfile.rpartition(".")[0],matchThres)
-    # print(outfile)
-    # outfile = clustfile+'thres_%s_phasi.csv' % matchThres                       ## 2437.txt.score_p1e-07_sRNA_21_out.cluster
+    outfile = "./%s_thres%s_phasi.csv" % (clustfile.rpartition(".")[0],matchThres)
     fh_out  = open(outfile,'w')
 
     if fetchMax == 1: ### Fetch max phasi for each loci 
@@ -958,7 +1406,7 @@ def writer_summ(clustfile,resList,dictList):
         fh_out2     = open(outfile2,'w')
 
         libsHead    = libs
-        fh_out2.write("Name\tp-val\tChr\tStart\tEnd\tbestLib\tcluster\tbestKval\tphasiDominance\tmaxTagRatio\t%s\ttotalPhasAbun\tmaxtag\tmaxTagAbun\tmaxtag2\tmaxTagAbun2\n" % ('\t'.join(x for x in libsHead)))
+        fh_out2.write("Name\tP-val\tChr\tStart\tEnd\tIdentifier\tBest k-val\tPhasi ratio\t Max Tag Ratio\t%s\tTotal Phasi Abundance\tMost Abun Tag (MAT)\t MAT Abun\tMAT2\tMAT2 Abun\tBestLib\n" % ('\t'.join(x for x in libsHead)))
         # print(queryLibs) ## Libs whose abindance will be summed to give final abundance of tags
         abunList    = [] ### List to capture tags and abundance for each phased loci
         libAbunList = [] ## Lib-wise abundances of tag
@@ -1064,7 +1512,7 @@ def writer_summ(clustfile,resList,dictList):
             # print("Libwise Abundances",libAbunSum)
 
             ## Write - Loci, most abundant tag, most abundant tag abun,total phased abun, number of phased tags, and lib-wise abundances
-            fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2))
+            fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo[:-1]),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2,phasinfo[-1]))
             abunList    = [] ## Empty before next phased loci
             libAbunList = [] ## Empty lib-iwse abundances of tag list before next entry
             # sys.exit()
@@ -1096,11 +1544,11 @@ def getAbundanceLocal(tag,dictList):
 
     # The dictionaries may not be sorted in the given order, so sort them
     # according to the key (that being the index returned by getAbunFromDict)
-    print("\nTag:",tag)
-    print("Unsorted:",tagAbunList)
+    # print("\nTag:",tag)
+    # print("Unsorted:",tagAbunList)
     sortedTagAbunList = sorted(tagAbunList, key=operator.itemgetter(0),
         reverse = False)
-    print("Sorted:",sortedTagAbunList)
+    # print("Sorted:",sortedTagAbunList)
 
     # Store just the abundances for return
     abunList = []
@@ -1316,34 +1764,105 @@ def main():
     libs    = readSet(setFile)
     pcutoff = pvaluereader()
     temp_folder,clustfile = prepare(pcutoff,libs,res_folder)
-    if region == 'G':
-        # global overlapCutoff
-        overlapCutoff = 0.20 ## = 0.25 for genomic and 0.50 for ncRNAs
+
+    #### Write to memeory
+    fh_mem = open("%s/%s" % (res_folder,memFile),'w')
+    fh_mem.write("@phase:%s\n" % (phase))
+    fh_mem.write("@pval:%s\n" % (pcutoff))
+    
+    global overlapCutoff
+    if runType == 'G' or runType == "S":
+        overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
     else:
-        # global overlapCutoff
         overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
 
     if fileType == 'L':
-        listConverter(temp_folder,fileType)
-        main_dict = removeRedundant(temp_folder,args.pval,fileType,overlapCutoff)
+        print('\nList files selected for analysis - Converting them to readable format')
+        fls     = glob.glob(r'%s/*.PARE.validation.list' % (temp_folder))
+        print ('Here are the files that will be converted:',fls,'\n')
+        print ('Total files to analyze: %s' % (len(fls)))
+
+        ### Prepare first file for comaprision
+        firstfile   = fls[0]
+        firstlist   = listConverter(firstfile)                          ## List of PHAS from file
+        firstgrps   = groupPHAS(firstlist)                              ## PHAS list grouped on chr/scaffold or transcripts
+
+        # #### Test - serial
+        # firstmergeL = []
+        # for i in firstgrps:
+        #     # print("## Group",i)
+        #     akey,aval = selfMerge(i) ### Provides a merged list of PHAS for chr/scaffold and Trans
+        #     firstmergeL.append((akey,aval))
+
+        ### Parallel mode
+        firstmergeL= PPResults(selfMerge,firstgrps)                     ## PHAS list made non-redundant from diff conf. levels
+        firstmergeD= dict((i[0], i[1]) for i in firstmergeL)            ## Dict. of PHAS list based on chr/scaffold and trans
+        collapsedL = listTocollapsed(firstmergeL)                             ## Collapsed list format incase there is just one library
+
+        ### Start the comparision
+        compareflag = False     ## Flag used to decide if it comaprision between first two files or afile and collapsed list
+        totalfls    = len(fls)
+        flcount     = 2         ## Two files are comapred in first loop so count starts from 2 
+        for fl in fls[1:]:
+            ## Prepare chr/scaffold/transcrpt specific dict of PHAS
+            print("\n#### Comparing %s/%s file" % (flcount,totalfls))
+            print("#### File being compared:%s" % (fl))
+            fllist          = listConverter(fl)                         ## List of PHAS from file
+            flgrps          = groupPHAS(fllist)                         ## PHAS list grouped on chr/scaffold or transcripts
+            flmergeL        = PPResults(selfMerge,firstgrps)            ## PHAS list made non-redundant from diff conf. levels
+            flmergeD        = dict((i[0], i[1]) for i in firstmergeL)   ## Dict. of PHAS list based on chr/scaffold and trans
+
+            if compareflag == False:
+                ## No comparision made yet this is the first and uses list directly from files
+                rawinputs       = inputMaker(firstmergeD,flmergeD) ### File names are encoded in sub-lists
+                
+                ## Test collapser in serial mode 
+                # collapsedL = [] ### List to hold resultsfrom all chr/scaffold and trascriptome
+                # for aninput in rawinputs:
+                #     ares = mergePHAS(aninput)
+                #     collapsedL.append(ares)
+                #     # print(collapsedL)
+
+                collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
+                compareflag     = True
+                flcount         += 1
+
+            else:                
+                xD              = {}                            ## Set to empty before updation, just to be sure
+                xD              = collapsedToDict(collapsedL)   ## Reformat the collapsed results to dict from files
+                rawinputs       = inputMaker(xD,flmergeD)       ## Prepare for comaprision between both
+                collapsedL      = []                            ## Set to empty before updation, just to be sure
+                collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
+                flcount         += 1
+
+        #### Write merged results in old-format 
+        # resfile                 = writer_collapse(collapsedL) ### Same format as writer collapse
+        # sys.exit()
+
     elif fileType == 'C':
         listConverter(temp_folder,fileType)
         main_dict = compare(temp_folder,fileType)
     else:
-        main_dict = removeRedundant(temp_folder,args.pval,fileType,overlapCutoff)
+        ### Will not be user ever
+        print("Unknown filetype - developers setting is off ")
+        print("Download the author's orginal version from: https://github.com/atulkakrana/phasTER/releases")
+        sys.exit()
+        # main_dict = removeRedundant(temp_folder,args.pval,fileType,overlapCutoff)
     
-    outfile1,outfile2 = writer_collapse(main_dict)
+    collapsedfile,collapsedLfile = writer_collapse(collapsedL)
+    fh_mem.write("@collapsedfile:%s\n" % (collapsedfile))
+    fh_mem.write("@collapsedlist:%s\n" % (collapsedLfile))
 
 
     ### Summarizer ###########################################
     
     ## Read phasiFile
-    phasList,phashead = PHASreader(outfile1)
+    phasList,phashead = PHASreader(collapsedfile)
     time.sleep(1)
 
     ## Get the clusters
     resList,resList2 = getClust(clustfile,phasList)
-    if runType == 'N':
+    if runType == 'T' or runType == 'S':
         allphasiFile = allphasiWriter(clustfile,resList2)
     else:
         print("File with all PHAS will not be generated for this 'runType'")
@@ -1355,9 +1874,13 @@ def main():
     dictList    = PPResults(readFileToDict, indexList)
 
     ## Write the summary
-    results,results2 = writer_summ(clustfile,resList,dictList)
+    phasifile,summaryfile = writer_summ(clustfile,resList,dictList)
+    fh_mem.write("@summaryfile:%s\n"    % (summaryfile))
+    fh_mem.write("@phasifile:%s\n"      % (phasifile))
+    fh_mem.close()
 
-    ### Clean unwanted files
+    ### Prepare for revFerno and cleanup unwanted files
+    # shutil.copy("./%s" % (setFile), "./%s" % (res_folder))
     if cleanup == 1:
         cleaner()
 
@@ -1370,6 +1893,7 @@ if __name__ == '__main__':
     main()
     print ("\n#### Summarization took", round(time.time()-start,2),"seconds")
     print ("#### Please see '%s' folder for results\n" % (res_folder))
+    print("#### 'revFerno' can be run by command: python3 revferno -mode auto -dir %s -mir your-miRNA-filename\n" % (res_folder))
     sys.exit()
 
 
@@ -1438,6 +1962,36 @@ if __name__ == '__main__':
 ## v1.09 -> v1.10
 ## Added Reza modules to fetch library wise abundances
 ## Tested Rzea module using the tagcount files downloaded from server with norm abudnaces and they match with the internal version
+
+## v1.10 -> v1.11
+## Input files with *.fas extension had *.txt extension in list files so these were not matching with the "libs". In prepare function
+#### a new list of libs is made w/o file extensions and this is used to match with list and cluster files with just the library name
+
+## v1.10 -> v1.12 [major]
+## Updated runTYPEs - G,T and S modes
+## Added a memory file which is read by revFerno
+## overlapCutoff updated to use runType flags
+
+
+## v1.12 -> v1.14 [major]
+## Added faster algorithm for removing redudannt loci at both self (within the file) and global level (when comapring with others) -faster
+## Added uniq alphabet to keys made for comarision between two lists so that PHAS with same coords between both files doesn't 
+#### end up having same key which add common key to negtive list and updated the dict with same key - Such PHAS was being deleted
+## New algorithm paralellized - faster
+## Now includes all PHAS loci less then cutoff  
+## Loci from every file, of different confidence levels are now uniques before comparing to other PHAS - Best loci and coords
+## Fixed comarision based on length it was reversed before - best loci and coords
+## This version will give best PHAS coordinates, compltely unique PHAS in final list
+## all cluster file for p-values less then the used are picked up, because collapser usesfiles from 
+#### all diffrent confodence levels. Also the matchThres for cluster and PHAS is increased to 0.99 because
+#### now files for all confidence are available so cluster should match at high cutoff, reducing number the
+#### total number of clusters picked up.
+## closed lots of print statements in
+
+## v1.14 -> v.12
+## Fixed error writing phasiRNAs for transcriptome mode and one more minor error
+
+
 
 ## Script generates an error at final exit() in __main__
 ## Error in atexit._run_exitfuncs:

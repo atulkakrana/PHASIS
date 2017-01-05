@@ -1,24 +1,24 @@
-<<<Settings file for phaser script>>>
+<<< Settings file for phaser script >>>
 
-<<< Mandatory Settings, value in text>>>
-@runType    	= Y
-@reference  	= /home/kakrana/99.genomes/rice.msu.7/all.fa
-@userLibs 		= 2599_norm.txt,2600_norm.txt
-@libFormat 		= T					
-@phase          = 21
+<<< Mandatory Settings, value in text, see descriptions below >>>
+@runType        = G
+@reference      = /home/kakrana/9.Test/22.phaster/genome.test/all3.fa
+@userLibs       = 2519_chopped.txt,2599_chopped.txt,2600_chopped.txt
+@libFormat      = T					
+@phase          = 24
 
-<<< Optional Settings, value in text>>>
-@index 			= 
+<<< Optional Settings, leave empty to make index on fly, value in text>>>
+@index          = 
 
 <<<Settings Help>>>
-<@runType 			- Y: Running on whole genome | N: running on transcriptome or scaffold file>
-<@reference   		- If geno = 'Y' then genome FASTA |  if geno = 'N' then yur transcriptome or scaffold FASTA>
-<@userLibs 			- Specify library IDs in comma separated format to fetch data. Used only if @fetchLib setting is set to "N">
-<@libFormat 		- Specify the sRNA library format. F: Fasta Format | T: Tag count format>
-<@phase 			- Desired phase to use for prediction>
-<@index   			- If bowtie index exist already provide the path and index suffix. If not, then leave blank, the index will be made in first run and will be reused in subsequent runs>
+<@runType       - G: Running on whole genome | T: running on transcriptome | S: running on scaffolded genome>
+<@reference     - If @runType = ‘G’ then genome FASTA |  @runType = ’S’ or ’T’ then your scaffolds or transcriptome FASTA>
+<@userLibs      - Specify library IDs in comma separated format to fetch data. Used only if @fetchLib setting is set to "N">
+<@libFormat     - Specify the sRNA library format. F: FASTA Format | T: Tag count format>
+<@phase         - Desired phase to use for prediction. 21 for 21 nt PHAS | 24 for 24 nt PHAS>
+<@index         - If bowtie index exist already provide the path and index suffix. If not, then leave blank, the index will be made in first run and will be reused in subsequent runs>
 
 <<<END>>>
 <<<Script for predicting lib-wise phased loci>>>
-<<<v0.96>>>
+<<<v1.0>>>
 <<<Author: kakrana@gmail.com>>>
