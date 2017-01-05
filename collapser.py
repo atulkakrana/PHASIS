@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.2 01/04/17
+## Updated: version-1.21 01/05/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 
@@ -10,7 +10,7 @@
 ### non-redundant set of phased loci. Also uniq phased loci from each library.
 ### Contact: atulkakrana@gmail.com
 
-import os,glob,sys,difflib,time,shutil,argparse
+import os,glob,sys,difflib,time,shutil,argparse,math
 import operator,datetime,subprocess,multiprocessing,re
 from multiprocessing import Process, Queue, Pool
 from operator import itemgetter
@@ -58,7 +58,7 @@ flags = parser.add_argument_group('required arguments') ## Add required argument
 
 flags.add_argument('-dir',  default='None', type=str, help='directory from your'\
     'phaser run which need to be summarized. Required parameter', required=True)
-parser.add_argument('-pval',  default='1e-05', type=float, help='pvalue cutoff to '\
+parser.add_argument('-pval',  default='', type=str, help='pvalue cutoff to '\
     'filter the phased siRNAs loci or transcipts. Optional parameter', required=False)
 
 # args = parser.parse_args()
@@ -179,7 +179,6 @@ def pvaluereader():
     #     print("No *.cluster files found in specified directory:%s" % (args.dir))
     #     print("please check")
 
-    print("%s clusters cached" % (len(clustL)))
     for aclust in clustL:
         # print(aclust,aclust.rsplit("_",4)[1])
         pval = float(aclust.rsplit("_",4)[1].replace('p',''))
@@ -190,22 +189,62 @@ def pvaluereader():
     ## Sanity check #######
     if not pvalS:
         print("No 'clusters' found - please confirm 'phaser' run finished successfully")
+        print("Otherwise there are no PHAS clusters in your data")
         sys.exit()
     else:
         pass
 
     ### Sort pval list ####
     pval_sorted = sorted(pvalS,reverse=True)
-    print(pval_sorted)
+    print("Total %s clusters cached at different p-values: %s" % (len(clustL),", ".join(str(x) for x in pval_sorted)))
+    # bestpval = percentile(pval_sorted,25)
+    # print("-- Best P-value: %s"% (bestpval))
 
-    ### Find best p-value for ananlysis in if-loop
-    for apval in pval_sorted:
-        if apval <= float(args.pval):
-            pcutoff = float(apval)
-            print("--best p-value for analysis:%s" % (pcutoff))
-            break
+    ### Use the specified or choose best bsed on confidence levels
+    pcutoff = None ### Set to None for checks
+    if args.pval:
+        ### User specified a p-value see if its in list or other better one
+        pcutoffL = [] ## List of valid cutoffs
+        for apval in pval_sorted:
+            # print(apval,float(args.pval))
+            if apval            <= float(args.pval):
+                pcutoff         = float(apval)
+                print("User specified p-value being used:%s" % (pcutoff))
+                break
+            else:
+                pass
+
+        if pcutoff == None:
+            ### Bad luck no matching or better p-value found
+            print("\nNo PHAS cluster at or above user specified p-val cutoff %s" % (args.pval))
+            print("Choose a lower value from these options: %s" % (", ".join(str(x) for x in pval_sorted)))
+            print("Alternatively, you can run 'collapser' without the '-pval' switch, phasTER will try to find best pvalue for analysis")
+            sys.exit()
+
         else:
             pass
+
+
+    else:
+        ### User did not specified optimize for best
+        pcutoff = float(percentile(pval_sorted,25))
+
+        if pcutoff <= float(1e-05):
+            ### seems decent use this one
+            print("Best guessed p-value being used: %s" % (pcutoff))
+            print("User can specify a lower or higher p-val cutoff using '-pval' option")
+            pass
+
+        else:
+            ### Optimized p-value is lower then expected cutoff
+            pcutoff = float(percentile(pval_sorted,5))
+            print("** PHAS cluster identified in current data are below recommended confidence threshold (p-val < 1e-05)")
+            print("** To continue, please specify a lower p-value using '-pval' switch")
+            print("** Possible values for '-pval' switch are : %s" % (", ".join(str(x) for x in pval_sorted)))
+            print("** Recommended value for '-pval' switch is: %s" % (pcutoff))
+            print("** Recommended command: python3 collapser -dir %s -pval %s" % (args.dir,pcutoff))
+            sys.exit()
+
     # sys.exit()
     return pcutoff
 
@@ -264,7 +303,7 @@ def prepare(pcutoff,libs,res_folder):
             # print("-%s,%s,%s" % (alib,pval,aphase))
             if (alib in libs_name) and (float(pval) <= float(pcutoff)) and (str(aphase) == str(phase)): ## phase added to ensure that if user runs both 21 and 24-nt PHAS in same directory, the files from different analysis are not picked up. 
             ### V1.14 and above all cluster file for p-values less then the used are picked up, because collapser uses
-            ### files from all diffrent confodence levels. Also the matchThres for cluster and PHAS is increased to 0.8
+            ### files from all diffrent confodence levels. Also the matchThres for cluster and PHAS is increased to 0.99
             ### because now files for all confidence are available so cluster should match at high cutoff, reducing number
             ### of total clusters picked up
                 # print("--Cluster file found:%s" % (alib ))
@@ -296,7 +335,7 @@ def prepare(pcutoff,libs,res_folder):
 
     return temp_folder,clustfile
 
-def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
+def removeRedundant(temp_folder,p_val,fileType,overlapCutoff,pcutoff):
     """
     Remove redundant entries by checking those in the pool
     """
@@ -341,7 +380,7 @@ def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
             for ent in lines:
                 ent_splt    = ent.strip('\n').split('\t')
                 
-                if float(ent_splt[1]) == float(args.pval): ### Equals p-value cut-off specifed above
+                if float(ent_splt[1]) == float(pcutoff): ### Equals p-value cut-off specifed above
                     key     = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])    ### chrid, start and end makes a key
                     
                     chrid   = ent_splt[2]
@@ -364,7 +403,7 @@ def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
                 #print('\nCurrent entry:',ent_splt)
     
                 ### Compare with dict entries and get ratio
-                if float(ent_splt[1]) == float(args.pval): ### Check p-value cutoff
+                if float(ent_splt[1]) == float(pcutoff): ### Check p-value cutoff
                     #print('Adding')
                     new_chrid   = ent_splt[2] ## Chromosome or transcript name
                     new_start   = int(ent_splt[3])
@@ -468,7 +507,7 @@ def removeRedundant(temp_folder,p_val,fileType,overlapCutoff):
     fh_out.close()
     return main_dict
 
-def compare(temp_folder,fileType):
+def compare(temp_folder,fileType,pcutoff):
     """
     compare two csv results files generated from script - Format should be same for both files 
     """
@@ -497,7 +536,7 @@ def compare(temp_folder,fileType):
             for ent in lines:
                 print(ent.strip('\n'))
                 ent_splt = ent.strip('\n').split('\t')
-                #if float(ent_splt[1]) == float(args.pval): ### Equals p-value cut-off specifed above
+                #if float(ent_splt[1]) == float(pcutoff): ### Equals p-value cut-off specifed above
                 key     = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])###Chr id, start and end makes a key
                 
                 chrid   = int(ent_splt[2])
@@ -767,17 +806,17 @@ def mergePHAS(aninput):
 
     return main_dict
 
-def writer_collapse(collapsedL):
+def writer_collapse(collapsedL,pcutoff):
     '''
     Writes collapsed results - updated with v1.13 to handle chr/scaffold or trascript wise grouped results
     '''
 
     print ("\n#### Fn: Collapsed Writer ############")
 
-    outfile1    = "./%s/%sPHAS_p%s_collapsed.txt" %     (res_folder,phase,args.pval)
+    outfile1    = "./%s/%sPHAS_p%s_collapsed.txt" %     (res_folder,phase,pcutoff)
     fh_out1     = open(outfile1,'w')
     fh_out1.write('Name\tp-val\tChr\tStart\tEnd\tStrand\tLib\n')
-    outfile2    = "./%s/%sPHAS_p%s_collapsed.list" %    (res_folder,phase,args.pval)
+    outfile2    = "./%s/%sPHAS_p%s_collapsed.list" %    (res_folder,phase,pcutoff)
     fh_out2     = open(outfile2,'w')### For our Genome viewer, No header required
 
    
@@ -838,7 +877,7 @@ def writer_collapse(collapsedL):
     # fh_out3.close()
     return outfile1,outfile2
 
-def listConverter(afile):
+def listConverter(afile,pcutoff):
     '''
     Parses phaster-core results file
     '''
@@ -857,7 +896,7 @@ def listConverter(afile):
             pval,phase,trash = ent_splt[0].strip().split('|')
             chromo_start,end = ent_splt[1].strip().split('..')
             chromo,sep,start = chromo_start.rpartition(':')
-            if float(pval) <= float(args.pval):
+            if float(pval) <= float(pcutoff):
                 if runType      == 'G':
                     fh_out.write('%s\t%s\t%s\t%s\t%s\tNONE\tNONE\n' % (phase,pval,chromo.strip(),start,end)) ##Chromosome has space before it which later gives error while key matching
                     alist.append((phase,pval,chromo.strip(),start,end))
@@ -1392,7 +1431,7 @@ def allphasiWriter(clustfile,resList):
 
     return outfile
 
-def writer_summ(clustfile,resList,dictList):
+def writer_summ(clustfile,resList,dictList,pcutoff):
     '''
     write the results
     '''
@@ -1402,7 +1441,7 @@ def writer_summ(clustfile,resList,dictList):
     fh_out  = open(outfile,'w')
 
     if fetchMax == 1: ### Fetch max phasi for each loci 
-        outfile2    = "./%s/%sPHAS_p%s_summary.txt" % (res_folder,phase,args.pval)
+        outfile2    = "./%s/%sPHAS_p%s_summary.txt" % (res_folder,phase,pcutoff)
         fh_out2     = open(outfile2,'w')
 
         libsHead    = libs
@@ -1756,6 +1795,10 @@ def PPResults(module,alist):
 
     return results
 
+def percentile(data, percentile):
+    size = len(data)
+    return sorted(data)[int(math.ceil((size * percentile) / 100)) - 1]
+
 #### MAIN #######################################
 #################################################
 def main():
@@ -1784,7 +1827,7 @@ def main():
 
         ### Prepare first file for comaprision
         firstfile   = fls[0]
-        firstlist   = listConverter(firstfile)                          ## List of PHAS from file
+        firstlist   = listConverter(firstfile,pcutoff)                          ## List of PHAS from file
         firstgrps   = groupPHAS(firstlist)                              ## PHAS list grouped on chr/scaffold or transcripts
 
         # #### Test - serial
@@ -1807,7 +1850,7 @@ def main():
             ## Prepare chr/scaffold/transcrpt specific dict of PHAS
             print("\n#### Comparing %s/%s file" % (flcount,totalfls))
             print("#### File being compared:%s" % (fl))
-            fllist          = listConverter(fl)                         ## List of PHAS from file
+            fllist          = listConverter(fl,pcutoff)                         ## List of PHAS from file
             flgrps          = groupPHAS(fllist)                         ## PHAS list grouped on chr/scaffold or transcripts
             flmergeL        = PPResults(selfMerge,firstgrps)            ## PHAS list made non-redundant from diff conf. levels
             flmergeD        = dict((i[0], i[1]) for i in firstmergeL)   ## Dict. of PHAS list based on chr/scaffold and trans
@@ -1835,11 +1878,8 @@ def main():
                 collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
                 flcount         += 1
 
-        #### Write merged results in old-format 
-        # resfile                 = writer_collapse(collapsedL) ### Same format as writer collapse
-        # sys.exit()
-
     elif fileType == 'C':
+        ### Function for future updates
         listConverter(temp_folder,fileType)
         main_dict = compare(temp_folder,fileType)
     else:
@@ -1847,9 +1887,9 @@ def main():
         print("Unknown filetype - developers setting is off ")
         print("Download the author's orginal version from: https://github.com/atulkakrana/phasTER/releases")
         sys.exit()
-        # main_dict = removeRedundant(temp_folder,args.pval,fileType,overlapCutoff)
+        # main_dict = removeRedundant(temp_folder,pcutoff,fileType,overlapCutoff)
     
-    collapsedfile,collapsedLfile = writer_collapse(collapsedL)
+    collapsedfile,collapsedLfile = writer_collapse(collapsedL,pcutoff)
     fh_mem.write("@collapsedfile:%s\n" % (collapsedfile))
     fh_mem.write("@collapsedlist:%s\n" % (collapsedLfile))
 
@@ -1874,7 +1914,7 @@ def main():
     dictList    = PPResults(readFileToDict, indexList)
 
     ## Write the summary
-    phasifile,summaryfile = writer_summ(clustfile,resList,dictList)
+    phasifile,summaryfile = writer_summ(clustfile,resList,dictList,pcutoff)
     fh_mem.write("@summaryfile:%s\n"    % (summaryfile))
     fh_mem.write("@phasifile:%s\n"      % (phasifile))
     fh_mem.close()
@@ -1988,8 +2028,18 @@ if __name__ == '__main__':
 #### total number of clusters picked up.
 ## closed lots of print statements in
 
-## v1.14 -> v.12
+## v1.14 -> v1.2
 ## Fixed error writing phasiRNAs for transcriptome mode and one more minor error
+## CLuster files for all different confidence levels are included to fetch phasiRNAs abudnaces
+#### It's because of this matchThres has been raised to 0.99 - To find exact same cluster 
+#### for PHAS and reducing the number of cluster to scan. This also reduces noise in phasiRNA
+#### abudnaces added due to presence of phasiRNAs from several clusters
+
+## v1.2 -> v1.21
+## Added checks for available p-value cutoffs in case they are lesser then hard default
+## Added method find best pcutoff from available values if user doesn't specified
+#### If this pcutoff is below recommneded confidence level then best available p-value is recommended
+## MAde changes to accomodate pcutoff instead of default argument (1e-05) which is now empty 
 
 
 

@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.0 01/04/17 
+## Updated: version-v1.01 01/05/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
@@ -257,6 +257,49 @@ def readSet(setFile):
     # sys.exit()
     return libs
 
+def PHASBatch(con,libs,runType,index,deg):
+    '''
+    ## Deprecated
+    '''
+    
+    #os.mkdir('./%s' % (lib))
+    #output_path = './%s' % (lib)
+    
+    for lib in libs:
+        print (lib)
+        cur = con.cursor()
+        cur.execute('SELECT processed_path FROM master.library_info where lib_id = %s' % (lib))
+        path = cur.fetchall()
+        #print(path[0][0])
+        
+        pro_file    = path[0][0].replace('$ALLDATA', '/alldata')###Processed sRNA file
+        out_file    = '%s.txt' % (lib)
+        rl          = str(phase)
+        nproc2      = str(nproc)
+        sRNAratio   = str(75)
+        print (pro_file)
+        
+        if runType == 'G': ### Uses Whole genome as input
+            if deg == 'Y':
+                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.genome.pl", "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
+            else:
+                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.genome.pl", "-i", pro_file,"-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
+        
+        else: ### Uses FASTA file of genes as input         
+            #pipe =subprocess.Popen(["perl5.18", "-v"])
+            if deg == 'Y':
+                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.MUL.pl", "-i", pro_file, "-q", PARE, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
+            else:
+                retcode = subprocess.call([perl, "/data2/homes/kakrana/svn/users/kakrana/phasiRNA_prediction_pipeline.ver.MUL.pl", "-i", pro_file, "-f", "-t", sRNAratio, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nproc2])
+                    
+        
+        if retcode == 0:
+            pass
+        else:
+            print("Problem with Phasing script - Return code not 0")
+            sys.exit()
+        
+    return lib
 
 def TagAbundanceFile(con,db,libs):
     '''
@@ -434,7 +477,7 @@ def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit):
 
     return rawInputs
 
-def indexBuilder(reference):
+def indexBuilder_bak(reference):
     
     
     print ("\n#### Fn: indexBuilder #########################")
@@ -497,6 +540,69 @@ def indexBuilder(reference):
     print("Index prepared:%s\n" % (genoIndex))
 
     # sys.exit()
+
+def indexBuilder(reference):
+    
+    
+    print ("\n#### Fn: indexBuilder #########################")
+    ### Sanity check #####################
+    if not os.path.isfile(reference):
+        print("'%s' reference file not found" % (reference))
+        print("Please check the genomeFile - Is it in specified directory? Did you input wrong name?")
+        print("Script will exit for now\n")
+        sys.exit()
+    else:
+        print("Reference file located - Preparing to create index")
+        pass
+    #####################################
+
+    ### Clean reference ################
+    fastaclean,fastasumm = FASTAClean(reference,0)
+
+    ### Prepare Index ##################
+    print ("**Deleting old index 'folder' !!!!!!!!!!!**")
+    print("If its a mistake cancel now by pressing ctrl+D and continue from index step by turning off earlier steps- You have 2 seconds")
+    time.sleep(2)
+    shutil.rmtree('./index', ignore_errors=True)
+    os.mkdir('./index')
+    
+    genoIndex   = '%s/index/%s' % (os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Can be merged with genoIndex from earlier part if we use bowtie2 earlier
+    # genoIndex   = './index/%s' % (fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Alternative approach -Can be merged with genoIndex from earlier part if we use bowtie2 earlier
+    print('Creating index of cDNA/genomic sequences:%s**\n' % (genoIndex))
+    adcv        = "256"
+    divn        = "6"
+
+    ### Run based on input about the memory
+    if args.lowmem:
+        retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
+    else:
+        retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
+    
+    if retcode == 0:## The bowtie mapping exit with status 0, all is well
+        # print("Reference index prepared sucessfully")
+        pass
+    else:
+        print("There is some problem preparing index of reference '%s'" %  (reference))
+        print("Is 'Bowtie' installed? And added to environment variable?")
+        print("Script will exit now")
+        sys.exit()
+    #####################################
+
+    ### Make a memory ###################
+    fh_out      = open(memFile,'w')
+    refHash     = (hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()) ### reference hash used instead of cleaned FASTA because while comparing only the user input reference is available
+    indexHash   = (hashlib.md5(open('%s.1.ebwt' % (genoIndex),'rb').read()).hexdigest())
+    print("\n@genomehash:%s | @indexhash:%s" % (refHash, indexHash) )
+    fh_out.write("@timestamp:%s\n" % (datetime.datetime.now().strftime("%m_%d_%H_%M")))
+    fh_out.write("@genomehash:%s\n" % (refHash))
+    fh_out.write("@index:%s\n" % (genoIndex))
+    fh_out.write("@indexhash:%s\n" % (indexHash))
+
+    print("Index prepared:%s\n" % (genoIndex))
+
+    # sys.exit()
+    
+    return genoIndex
 
 def FASTAClean(filename,mode):
     
@@ -831,7 +937,7 @@ def main(libs):
     print('These are the libs: %s' % (libs))
     rawInputs = inputList(libs,runType,genoIndex,deg,nthread,noiseLimit,hitsLimit)
 
-    #### Test - Serial Mode
+    # ### Test - Serial Mode
     # for aninput in rawInputs:
     #     PHASBatch2(aninput)
 
@@ -925,6 +1031,9 @@ if __name__ == '__main__':
 ## v0.99 - v1.0
 ## Updated the index builder function with optimized parameters. Now 6-8 minutes fater
 ## Added a argument to run on low memory
+
+## v1.0 - v1.01
+## Remade changes to indexBuilder module by copying the working version from v0.99. Not sure what went wrong in the v1.0
 
 ## TO-DO
 ## Add automatic index resolution

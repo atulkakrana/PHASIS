@@ -28,7 +28,7 @@ nproc           = "Y"                                       ## Used by parallel 
 #### validatePAREby PHAS settings
 PAREpval        = 0.25                                      ## Only if PAREresType == 'S' - Cutoff of corrected p-value to
                                                             ## use to filter out non-relevant predictions
-pVal            = '5e-07'                                   ## P-value of phased loci to test for
+
 offset          = 1                                         ## 0: No +1/-1 phases scanned 1: In addition to phase +1/-1 sites also checked for trigger
 
 
