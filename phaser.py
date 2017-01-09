@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.02 01/06/17 
+## Updated: version-v1.02 01/08/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
