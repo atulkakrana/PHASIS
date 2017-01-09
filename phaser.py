@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.01 01/05/17 
+## Updated: version-v1.02 01/06/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
@@ -31,8 +31,8 @@ PARE            = 'GuturGu'                         ## If deg = 'Y' then File fo
 
 ## ADVANCED SETTINGS #######################################
 cores           = 0                                 ## 0: Most cores considered as processor pool | 1-INTEGER: Cores to be considered for pool
-nthread         = 3                               ## Threads perprocess
-# server          = "tarkan.ddpsc.org"                ## Server to use to fetch library information and smallRNA libraries
+# nthread         = 3                                 ## Threads perprocess
+# server          = "tarkan.ddpsc.org"              ## Server to use to fetch library information and smallRNA libraries
 # perl            = "/usr/local/bin/perl_5.18"        ## Josh updated the perl on Tarkan and its not ready yet for PHAS script FORK is missing and somemore modules -Check with Pingchuan help
 perl            = "perl"
 Local           = 3                                 ## [0]: Files in directory [2]: Get the libs from $ALLDATA with raw reads 
@@ -231,7 +231,8 @@ def readSet(setFile):
 
                 elif param.strip() == '@userLibs':
                     global libs
-                    libs = list(map(str,value.strip().split(',')))
+                    # libs = list(map(str,value.strip().split(',')))
+                    libs     = [str(x) for x in value.strip().split(',') if x.strip() != '' ] ## This is my dope...
                     print('User Input Libs:                 ',libs)
 
                 elif param.strip() == '@libFormat':
@@ -623,7 +624,7 @@ def FASTAClean(filename,mode):
 
     ### Outfiles
     fh_out1     = open(fastaclean, 'w')
-    fastasumm   = ('%s.summ.txt' % (filename.split('.')[0]))
+    fastasumm   = ('%s/%s.summ.txt' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
     fh_out2     = open(fastasumm, 'w')
     fh_out2.write("Name\tLen\n")
     
@@ -900,6 +901,7 @@ def main(libs):
         else:
             print("#### Converting FASTA format to counts #######")
             dedup_start     = time.time()
+            
             ## TEST
             # newList = []
             # for alib in libs:
@@ -1034,6 +1036,13 @@ if __name__ == '__main__':
 
 ## v1.0 - v1.01
 ## Remade changes to indexBuilder module by copying the working version from v0.99. Not sure what went wrong in the v1.0
+
+## v1.01 -> v1.02
+## Fixed error where comma-seprated @userlibs has a an empty entry, like a stray comma in end. Script doesn't ends in that case 
+#### I thought its because of many libraries being used and results not reported back i.e. multiprocessing issue but I was wrong
+## Fixed summary file name, it was being written at somewhere else randomly
+## nthread parameter comes from optimize function and need not to be defines as a 
+#### static global variable
 
 ## TO-DO
 ## Add automatic index resolution
