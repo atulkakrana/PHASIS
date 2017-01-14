@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.22 01/09/17
+## Updated: version-1.22 01/08/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 

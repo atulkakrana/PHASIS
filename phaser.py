@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.02 01/08/17 
+## Updated: version-v1.03 01/14/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
@@ -177,7 +177,18 @@ def checkDependency():
         goSignal    = False
         # print("See README for how to INSTALL")
 
-    if goSignal == False:
+    ## Check core files
+    isPhasCLust1    = os.path.isfile("%s/phasclust.genome.v2.pl" % (phaster_path))
+    isPhasCLust2    = os.path.isfile("%s/phasclust.MUL.v2.pl" % (phaster_path))
+    
+    if isPhasCLust1 is False or isPhasCLust2 is False:
+        print("--phasTER Core                   : missing")
+        goSignal    = False
+    else:
+        print("--phasTER Core                   : found")
+        pass
+
+    if goSignal     == False:
         print("\n** Please install the missing libraries before running the analyses")
         # print("See README for how to install these")
         print("** revFerno has unmet dependendies and will exit for now\n")
@@ -245,11 +256,11 @@ def readSet(setFile):
                     phase = int(value.strip())
                     print('User Input for phase length:     ',phase)
                 
-                elif param.strip() == '@path_prepro_git':
-                    global phaster_path
-                    phaster_path = str(value.strip()).rstrip("/")+"/phaster"
-                    # phaster_path = str(value.strip()).rstrip("/")+"/core"
-                    print('User Input for phaster path:     ',phaster_path) 
+                # elif param.strip() == '@path_prepro_git':
+                #     global phaster_path
+                #     phaster_path = str(value.strip()).rstrip("/")+"/phaster"
+                #     # phaster_path = str(value.strip()).rstrip("/")+"/core"
+                #     print('User Input for phaster path:     ',phaster_path) 
 
             else:
                 #print("Missed line:",line)
@@ -577,7 +588,17 @@ def indexBuilder(reference):
     if args.lowmem:
         retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
     else:
-        retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
+        statInfo    = os.stat(fastaclean)
+        filesize    = round(statInfo.st_size/1048576,2)
+        print("Genome Size: %s" % (filesize))
+        if filesize < 500:
+            ## Run optimized bowtie index prep
+            # print("Running optimized index prepration")
+            retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
+        else:
+            ## Genome is big, optimization under testing, so use normal bowtie index prep
+            # print("Running standard bowtie index prepration")
+            retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
     
     if retcode == 0:## The bowtie mapping exit with status 0, all is well
         # print("Reference index prepared sucessfully")
@@ -1043,6 +1064,10 @@ if __name__ == '__main__':
 ## Fixed summary file name, it was being written at somewhere else randomly
 ## nthread parameter comes from optimize function and need not to be defines as a 
 #### static global variable
+
+## v1.02 -> v1.03
+## Added check for phasTER core
+## Added check for genome size before index prepration, and select normal or optimized index prepration approach
 
 ## TO-DO
 ## Add automatic index resolution
