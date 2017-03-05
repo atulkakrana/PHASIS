@@ -1,35 +1,35 @@
 #!/bin/bash
 
-## Updated: version-v1.02 01/04/17 
+## Updated: version-v1.03 03/05/17 
 
-printf "\nIn case of any issue at any point in phasTER analyses, contact authors at:\n"
+printf "\nIn case of any issue at any point in phasworks analyses, contact authors at:\n"
 # printf "Atul Kakrana: kakrana@udel.edu\n"
 # printf "Reza Hammond: rkweku@udel.edu\n\n"
-printf "https://github.com/atulkakrana/phasTER/issues\n\n"
+printf "https://github.com/atulkakrana/phasworks/issues\n\n"
 
-#### Compile PHASER #########
+#### Compile phasdetect #########
 
 if [ -d ./__pycache__ ]; then
   rm -r __pycache__/ 
 fi
 
-if [ ! -f ./phaser.py ]
+if [ ! -f ./phasdetect.py ]
 then
-  printf "phaser source not found in current directory\n"
+  printf "phasdetect source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  python3 -m py_compile phaser.py
-  cd __pycache__ && mv phaser.*.pyc phaser 
-  chmod u+x phaser && cp phaser ../
-  printf "Done:      phaser\n"
+  python3 -m py_compile phasdetect.py
+  cd __pycache__ && mv phasdetect.*.pyc phasdetect 
+  chmod u+x phasdetect && cp phasdetect ../
+  printf "Done:      phasdetect\n"
   cd ..
-  rm ./phaser.py
+  rm ./phasdetect.py
 fi
 
 
-#### Compile Collapser #########
+#### Compile phasmerge #########
 
 if [ -d ./__pycache__ ]; then
   rm -r __pycache__/ 
@@ -37,72 +37,72 @@ if [ -d ./__pycache__ ]; then
   # exit 1
 fi
 
-if [ ! -f ./collapser.py ]
+if [ ! -f ./phasmerge.py ]
 then
-  printf "collapser source not found in current directory\n"
+  printf "phasmerge source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  python3 -m py_compile collapser.py
-  cd __pycache__ && mv collapser.*.pyc collapser 
-  chmod u+x collapser && cp collapser ../
-  printf "Done:      collapser\n"
+  python3 -m py_compile phasmerge.py
+  cd __pycache__ && mv phasmerge.*.pyc phasmerge 
+  chmod u+x phasmerge && cp phasmerge ../
+  printf "Done:      phasmerge\n"
   cd ..
-  rm ./collapser.py
+  rm ./phasmerge.py
 fi
 
-#### Compile revFerno #########
+#### Compile phastrigs #########
 
 if [ -d ./__pycache__ ]; then
   rm -r __pycache__/ 
 fi
 
-if [ ! -f ./revferno.py ]
+if [ ! -f ./phastrigs.py ]
 then
-  printf "revferno source not found in current directory\n"
+  printf "phastrigs source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  python3 -m py_compile revferno.py
-  cd __pycache__ && mv revferno.*.pyc revferno 
-  chmod u+x revferno && cp revferno ../
-  printf "Done:      revferno\n"
+  python3 -m py_compile phastrigs.py
+  cd __pycache__ && mv phastrigs.*.pyc phastrigs 
+  chmod u+x phastrigs && cp phastrigs ../
+  printf "Done:      phastrigs\n"
   cd ..
-  rm ./revferno.py
+  rm ./phastrigs.py
 fi
 
 #### Place core scripts ######
 
-if [ -d ~/phaster ]
+if [ -d ~/phasworks ]
 then
-  rm -rf ~/phaster
-  mkdir ~/phaster 
+  rm -rf ~/phasworks
+  mkdir ~/phasworks 
   # printf "file deleted\n"
 else
-  mkdir ~/phaster
+  mkdir ~/phasworks
 fi
 
 if [ ! -f ./phasclust.genome.v2.pl ]
 then
-  printf "phaster-core source not found in current directory\n"
+  printf "phasworks-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n\n"
   printf "Download complete package and rerun script\n"
   exit 1
 else
-  cp phasclust.genome.v2.pl ~/phaster
+  cp phasclust.genome.v2.pl ~/phasworks
   rm phasclust.genome.v2.pl
 fi
 
 if [ ! -f ./phasclust.MUL.v2.pl ]
 then
-  printf "phaster-core source not found in current directory\n"
+  printf "phasworks-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  cp phasclust.MUL.v2.pl ~/phaster
+  cp phasclust.MUL.v2.pl ~/phasworks
   rm phasclust.MUL.v2.pl
 fi
 
@@ -113,18 +113,18 @@ then
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  cp sPARTA.py ~/phaster
+  cp sPARTA.py ~/phasworks
   rm sPARTA.py
 fi
 
 ## Remove old folder
-if [ -d ~/.phaster ]
+if [ -d ~/.phasworks ]
 then
-  rm -r ~/.phaster 
+  rm -r ~/.phasworks 
   # printf "file deleted\n"
 fi
 
-mv ~/phaster ~/.phaster
+mv ~/phasworks ~/.phasworks
 printf "Done:      core scripts\n"
 
 #### Clean up
@@ -135,14 +135,14 @@ printf "Deleted:   source files\n"
 #############################
 printf "\nNote:'install.sh' cannot be re-used after a successful installation\n"
 printf "Note: If installation fails, then recopy all files and try again\n"
-printf "\nphasTER tool-set is ready be used\n"
-printf "See readme here: https://github.com/atulkakrana/phasTER\n\n"
+printf "\nPHASworks suite is ready be used\n"
+printf "See readme here: https://github.com/atulkakrana/phasworks\n\n"
 
 exit 1
 
 
 ### Change Log 
 ## V1.0 -> v1.01
-## Edited names of phasTER-core scripts
+## Edited names of phasworks-core scripts
 ## v1.01 -> v1.02
 ## Added sPARTA script

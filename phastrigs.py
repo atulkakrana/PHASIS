@@ -15,11 +15,11 @@ from os.path import expanduser
 #########################################################################
 #### USER SETTINGS ######################################################
 
-setFile         = "phaser.set"         ### Settings file from phaser analysis
-memFile         = "collapser.mem"      ### Memory file from collapser  
+setFile         = "phasworks.set"         ### Settings file from phaser analysis
+memFile         = "phasmerge.mem"      ### Memory file from collapser  
 res_folder      = "triggers_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))
 home            = expanduser("~")
-phaster_path    = "%s/.phaster" % (home)
+phaster_path    = "%s/.phasworks" % (home)
 
 ##### DEVELOPER OPTIONS ##########
 nthread         = 6                                         ## Need automatic calculation like nProc
@@ -156,26 +156,26 @@ else:
 def checkDependency():
     '''Checks for required components on user system'''
 
-    print("\n#### Fn: checkLibs #####################")
+    print("\n#### Fn: checkLibs ###########################")
     
     goSignal    = True ### Signal to process is set to true 
 
     ### Check sPARTA
     issPARTA    = os.path.isfile("%s/sPARTA.py" % (phaster_path))
     if issPARTA is False:
-        print("--sPARTA  : missing")
+        print("--sPARTA                         : missing")
         goSignal    = False
     else:
-        print("--sPARTA  : found")
+        print("--sPARTA                         : found")
         pass
 
     ### Check bowtie2
     isbowtie2 = shutil.which("bowtie2")
     if isbowtie2:
-        print("--Bowtie2 : found")
+        print("--Bowtie2                        : found")
         pass
     else:
-        print("--Bowtie2 : misisng")
+        print("--Bowtie2                        : missing")
         goSignal    = False
         # print("See README for how to INSTALL")
 
@@ -183,18 +183,18 @@ def checkDependency():
         ## Check scipy
         isScipy     = importlib.find_loader('scipy')
         if isScipy is None:
-            print("--scipy   : missing")
+            print("--scipy                          : missing")
             goSignal    = False
         else:
-            print("--scipy   : found")
+            print("--scipy                          : found")
             pass
 
         isNumpy     = importlib.find_loader('numpy')
         if isNumpy is None:
-            print("--numpy   : missing")
+            print("--numpy                          : missing")
             goSignal    = False
         else:
-            print("--numpy   : found")
+            print("--numpy                          : found")
             pass
 
 
@@ -218,7 +218,7 @@ def readSet(setFile):
         print("---Please copy it to same directory as script and rerun")
         sys.exit()
 
-    print("\n#### Fn: Settings Reader ####################")
+    print("\n#### Fn: Settings Reader #####################")
     
     fh_in   = open(setFile, 'r')
     setFile = fh_in.readlines()
@@ -239,42 +239,42 @@ def readSet(setFile):
                 if param.strip() == '@runType':
                     global runType
                     runType = str(value.strip())
-                    print('User Input runType:              ',runType)
+                    print('User Input runType               :',runType)
 
                 elif param.strip() == '@index':
                     global index
                     index = str(value.strip())
-                    print('User Input index location:       ',index)
+                    print('User Input index location        :',index)
 
                 elif param.strip() == '@db':
                     global db
                     db = str(value.strip())
-                    print('User Input sRNA DB:              ',db)
+                    print('User Input sRNA DB               :',db)
 
                 elif param.strip() == '@fetchLib':
                     global fetchLib
                     fetchLib = str(value.strip())
-                    print('User Input to auto fetch libs:   ',fetchLib)
+                    print('User Input to auto fetch libs    :',fetchLib)
 
                 elif param.strip() == '@userLibs':
                     global libs
                     libs = list(map(str,value.strip().split(',')))
-                    print('User Input Libs:                 ',libs)
+                    print('User Input Libs                  :',libs)
 
                 elif param.strip() == '@reference':
                     global reference
                     reference = str(value.strip())
-                    print('User Input reference:            ',reference)
+                    print('User Input reference             :',reference)
 
                 elif param.strip() == '@phase':
                     global phase
                     phase = int(value.strip())
-                    print('User Input for phase length:     ',phase)
+                    print('User Input for phase length      :',phase)
                 
                 elif param.strip() == '@path_prepro_git':
                     global phaster_path
                     phaster_path = str(value.strip()).rstrip("/")+"/phaster"
-                    print('User Input for phaster path:     ',phaster_path) 
+                    print('User Input for phaster path      :',phaster_path) 
 
             else:
                 #print("Missed line:",line)
@@ -286,7 +286,7 @@ def readMem(memFile):
     '''
     Reads memory file and gives global variables
     '''
-    print ("\n#### Fn: memReader #########################")
+    print ("\n#### Fn: memReader ##########################")
     fh_in   = open(memFile,'r')
     memRead = fh_in.readlines()
     fh_in.close()
@@ -304,17 +304,17 @@ def readMem(memFile):
                 if param == '@phase':
                     global collapsephase
                     collapsephase = str(value)
-                    print('collapse phase:                  ',collapsephase)
+                    print('collapse phase                   :',collapsephase)
 
                 elif param == '@pval':
                     global collapsepval
                     collapsepval = str(value)
-                    print('collapse pval:                   ',collapsepval)
+                    print('collapse pval                    :',collapsepval)
 
                 elif param == '@collapsedfile':
                     global collapsefile
                     collapsefile = str(value)
-                    print('collapse file:                   ',collapsefile)
+                    print('collapse file                    :',collapsefile)
                 
                 else:
                     pass
@@ -369,7 +369,7 @@ def extractSeq(reference,PHASList,phasbuff):
 
     else:
         print("** Invalid @runType value encoutered")
-        print("** Please see settings file 'phaser.set' for valid options")
+        print("** Please see settings file 'phasworks.set' for valid options")
         print("** provide correct @runType value and re-run, script will exit now")
         sys.exit()
 
@@ -380,7 +380,7 @@ def sPARTA(seqfile,mirnafile,parelibs):
     [--auto mode] Runs sPARTA on extracted coords (runType = 'G' or 'S') and on extracted transcripts (runType = 'T')
     '''
 
-    print("\n#### Fn: sPARTA #####################")
+    print("\n#### Fn: sPARTA ##############################")
 
     #### PREPARE ####
     #################
@@ -509,10 +509,10 @@ def revMapper(ent):
         pass
 
     if args.predtype == "P":
-        print(" Ent: %s %s %s %s | RevMapped: %s %s %s %s" % (mir_name,gene_name,bind_site[0],bind_site[1],str(chr_id),strand,new_bind_site_start,new_bind_site_end))
+        # print(" Ent: %s %s %s %s | RevMapped: %s %s %s %s" % (mir_name,gene_name,bind_site[0],bind_site[1],str(chr_id),strand,new_bind_site_start,new_bind_site_end))
         rev_mapped_entry = ("%s,%s,%s,%s,%s" % (','.join(ent),str(chr_id),strand,new_bind_site_start,new_bind_site_end))
     else:
-        print(" Ent: %s %s %s %s %s | RevMapped: %s %s %s %s %s" % (mir_name,gene_name,cleave_site,bind_site[0],bind_site[1],str(chr_id),strand,new_cleave_site,new_bind_site_start,new_bind_site_end))
+        # print(" Ent: %s %s %s %s %s | RevMapped: %s %s %s %s %s" % (mir_name,gene_name,cleave_site,bind_site[0],bind_site[1],str(chr_id),strand,new_cleave_site,new_bind_site_start,new_bind_site_end))
         rev_mapped_entry = ("%s,%s,%s,%s,%s,%s" % (','.join(ent),str(chr_id),strand,new_cleave_site,new_bind_site_start,new_bind_site_end))
 
 
@@ -582,7 +582,7 @@ def validatePHAS(ent):
             # print ('This is the key:', akey, aval)
             if cleaveSite in aval:
                     if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                        print('-Match - miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite,tarStrand,akey,aval,(aval.index(cleaveSite)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                        # print('-Match - miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite,tarStrand,akey,aval,(aval.index(cleaveSite)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                         matEnt = ('%s,%s,%s,na' % (ent[5],akey,(aval.index(cleaveSite)+1-6)))
                         # fh_out.write('%s,%s,%s\n' % (ent[4],akey,(aval.index(cleaveSite)+1-6))) ## +1 to convert to human readable and -6 to get in reference to phase site in phase file
                     else:
@@ -626,12 +626,12 @@ def validatePHAS(ent):
             # print ('This is the key:', akey, aval)
             if cleaveSite1 in aval:
                 if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                    print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                    # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                     matEnt = ('%s,%s,%s,na' % (ent[5],akey,(aval.index(cleaveSite1)+1-6)))
 
             elif cleaveSite2 in aval:
                 if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                    print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                    # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                     matEnt = ('%s,%s,%s,na' % (ent[5],akey,(aval.index(cleaveSite2)+1-6)))
 
             
@@ -644,33 +644,33 @@ def validatePHAS(ent):
                     ### THIS LOOP CAN BE REDUCED by using a list of cleave sites rather than adding loop everytime - It's a joke
                     if cleaveSite1 in aval1:
                         if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                            print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval1.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                            # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval1.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                             matEnt  = ('%s,%s,%s,do' % (ent[5],akey,(aval1.index(cleaveSite1)+1-6)))
 
                     elif cleaveSite2 in aval1:
                         if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                            print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval1.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                            # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval1.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                             matEnt = ('%s,%s,%s,do' % (ent[5],akey,(aval1.index(cleaveSite2)+1-6)))
                     
                     elif cleaveSite1 in aval2:
                         if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                            print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval2.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                            # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval2.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                             matEnt = ('%s,%s,%s,do' % (ent[5],akey,(aval2.index(cleaveSite1)+1-6)))
 
                     elif cleaveSite2 in aval2:
                         if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                            print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval2.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                            # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval2.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                             matEnt = ('%s,%s,%s,do' % (ent[5],akey,(aval2.index(cleaveSite2)+1-6)))
 
                    
                     elif cleaveSite1 in aval3:
                         if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                            print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval3.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                            # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite1,tarStrand,akey,aval,(aval3.index(cleaveSite1)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                             matEnt = ('%s,%s,%s,so' % (ent[5],akey,(aval3.index(cleaveSite1)+1-6)))
 
                     elif cleaveSite2 in aval3:
                         if akey.split('-')[0] == chrid: ## i.e. clevage site is on same chromosme
-                            print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval3.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
+                            # print('-Match: miRNA:%s | Target:%s |CleaveSite:%s | Strand:%s @ PHAS:%s - %s phase: %d' % (mirName,tarName,cleaveSite2,tarStrand,akey,aval,(aval3.index(cleaveSite2)+1-6))) ## 1 added to correct the index in human format and 6 added because start is at 6th postion
                             matEnt = ('%s,%s,%s,so' % (ent[5],akey,(aval3.index(cleaveSite2)+1-6)))
 
                     else:
@@ -778,7 +778,7 @@ def PHASreader(PHASfile,collapsephase):
     and creates a dictionary of -5/+7 phased locations as value
     '''
 
-    print("\n#### Fn: PHAS Reader ######################")
+    print("\n#### Fn: PHAS Reader #########################")
 
     fh_in   = open(PHASfile,'r')
     # PHASres = PHASfile.rpartition("/")[-1]
@@ -852,7 +852,7 @@ def FASTAClean(filename,mode):
     and leave as-is for runType == 'S' and 'T'. This way you will be able to extract cords from cleaned genome using
     phaser coords
     '''
-    print("\n#### Fn: FASTAClean ######################")
+    print("\n#### Fn: FASTAClean ##########################")
     ## Read seqeunce file
     fh_in       = open(filename, 'r')
     # print ("PHASER uses FASTA header as key for identifying the phased loci")
@@ -916,7 +916,7 @@ def cacheGenome(fastafile):
     '''
     [mode auto, indexFlag = false]. Reference genome was cleaned and accordinagly processed before phaser run. No processing of chr/trascript names required just cache and run - This module could be merged with FASTA clean as repeated procssing wont affect the analysis.
     '''
-    print("\n#### Fn: cacheGenome #####################")
+    print("\n#### Fn: cacheGenome #########################")
 
     ### Approach-1 Faster when reading Genome files
     fastaD          = {} ### Dictionary that holds FASTA sequences
@@ -968,7 +968,7 @@ def fetchSequences(fastaD,fastalenD,coordsL,abuff):
     '''
     Fetches and writes seqeunces, and writes a coords file for revferno
     '''
-    print("\n#### Fn: fetchSequences ##################")
+    print("\n#### Fn: fetchSequences ######################")
 
     coordfile   = "%s/sparta/coords.txt" % (res_folder)
     seqfile     = "%s/sparta/coords.fas" % (res_folder)
@@ -1068,7 +1068,7 @@ def fetchTrans(fastaD,coordsL):
     Fetches transcripts from transcriptome FASTA, sice it's the real trnscript, no revrse mapping will be done so not coords file generated like the getchSeqeunces function
     '''
 
-    print("\n#### Fn: fetchTrans ######################")
+    print("\n#### Fn: fetchTrans ##########################")
 
     coordsfile  = None
     seqfile     = "%s/sparta/trans.fas" % (res_folder)
@@ -1098,7 +1098,7 @@ def formatguess(alib):
     '''
     guesses the format od seqeunce-based file
     '''
-    print("\n#### Fn: formatguess ##################")
+    print("\n#### Fn: formatguess #########################")
     ### Cache firs two lines
     fh_in       = open(alib,'r')
     firstline   = fh_in.readline().strip("\n").strip()
@@ -1128,7 +1128,7 @@ def parsePredicted(predTarF):
     analysis
     '''
 
-    print("\n#### Fn: miRferno Parser ##################")
+    print("\n#### Fn: miRferno Parser #####################")
     print("Reading '%s' file from folder" % predTarF)
     
     predTarL    = []                        ## list of final results or parlist
@@ -1172,7 +1172,7 @@ def tarReader(PAREres,PAREpval):
 
     ########## ADD IF LOOP FOR runTYPE = 'G', THEIR CHROMOSOME ENTRIES NEED TO BE PROCESSED #########
 
-    print("\n#### Fn: Targets Reader ###################")
+    print("\n#### Fn: Targets Reader ######################")
     
     fh_in   = open(PAREres, 'r')
     header  = fh_in.readline() ## Header
@@ -1313,7 +1313,7 @@ def prepareCoordsDict(coordsfile):
     '''
     Prepares global dictionary of coords file for reverse mapping
     '''
-    print("\n#### Fn: Coords Dict Maker ################")
+    print("\n#### Fn: Coords Dict Maker ###################")
 
     ### GET COORDS #####################################
     fh_in       = open(coordsfile,"r")
@@ -1370,7 +1370,7 @@ def revmapWriter(revmapL,predheader,afile):
     '''
     writes results from reverse mapping. Function is PATH aware
     '''
-    print("\n#### Fn: revMap Writer ################")
+    print("\n#### Fn: revMap Writer #######################")
 
     if args.mode == "auto":
         revmapF     = '%s_revmapped.csv' % (afile) ### args.predfile is a relative PATH in --auto mode
@@ -1399,7 +1399,7 @@ def revfernoWriter(validPHAS,resList,PHASdict_h,afile):
     '''
     Writes validated PHAS results 
     '''
-    print("\n#### Fn: revFerno Writer ################")
+    print("\n#### Fn: revFerno Writer #####################")
     
     ## Write results
     validphasF  = './%s/%s_trigger.csv' % (res_folder,afile.rpartition("/")[-1])
@@ -1447,7 +1447,7 @@ def dedup_process(alib):
     '''
     To parallelize the process
     '''
-    print("\n#### Fn: De-duplicater ###############")
+    print("\n#### Fn: De-duplicater #######################")
 
     afastaL     = dedup_fastatolist(alib)         ## Read
     acounter    = deduplicate(afastaL )            ## De-duplicate

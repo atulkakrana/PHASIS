@@ -8,15 +8,9 @@ use File::Basename;
 use Parallel::ForkManager;
 
 ######################################################################
-#  PhasiRNA Prediction Pipeline (PPP)
 #  Copyright 2013 University of Delaware
 #  Pingchuan Li: li@dbi.udel.edu
 #  @ Blake Meyers lab
-#
-#  Department of Plant Soil Science
-#  Delaware Biotechnology Insititute
-#  University of Delaware
-#  Newark DE, 19711
 #  
 #  This program is a FREE software; you can redistribute it and/or
 #  modify as your wishes
@@ -27,7 +21,7 @@ use Parallel::ForkManager;
 ######################################################################
 
 my $version  = 1.0;
-Ptime("games start...");
+Ptime("Phasing analysis begins...");
 
 # make sure Perl is over 5.12
 no 5.12;
@@ -38,30 +32,8 @@ GetOptions(my $options = {},
 );
 ########### USAGE ##############
 my $USAGE = <<USAGE;
-Scripts: PhasiRNA Prediction Pipeline (PPP). The sRNA readswere mapped
-by bowtie by default.
-
-Version: $version, Written by Pingchuan Li \@ Blake Meyers Lab 04/2013
-Arguments:
-
-    Mandatory:
-        -i        sRNA input file name
-        -f        two files formats are supported,[t] for tagcount, [f] for fasta. 
-        -d        indexed genome by bowtie, indicating the prefix of the genome
-        -rl       register len(rl), such as 21 or 24, separated by comma like: 21,24 or 21,22,23,24 etc
-        -px       prefix of all the output file, in order to distinguish for each other
-
-    optional:
-        -k        bowtie alignment hits report, default = all
-        -q        degradome or PARE data in ONLY tagcount format
-        -m        mismatches for both the sRNA and PARE/degradome alignment by bowtie, default = 0
-        -p        p-value in decimal number, defult = 0.005;
-        -cpu      cpu numbers for the bowtie alignment
-        -n        noise, default = 1, for those which have abundance less equal than 1, properly increase
-                  noise value for union dataset	
-        -g        gap between two separate cluster, 300bp by default
-        -t        minimal proportation of the interested register small RNA abundance, default = 85
-        -ht       the maximal average of hits for the small RNA of a certain cluster, defaut = 10
+Scripts: cluster analysis for phased siRNA
+Version: $version, Written by Pingchuan Li \@ Blake Meyers Lab
 
 USAGE
 die $USAGE unless defined ($options->{rl});#
@@ -347,7 +319,7 @@ foreach my $rl (sort {$a <=> $b} @rl) {#rl, register length
 	}
 }
 
-Ptime( "total sRNA abundance = $total_r_abundance");
+#Ptime( "total sRNA abundance = $total_r_abundance");
 unlink "$prefix.temp.sorted.cluster.minimal.requirement.txt";
 
 # -----------output the summary file ----------------
@@ -399,7 +371,7 @@ foreach my $file (@temp_files) {
 	unlink "$file";
 }
 
-Ptime("Gorgeous, you are done...");
+Ptime("Clusters have been scored...");
 
 # _____   _   _   __   _   _____   _____   _   _____   __   _   _____  
 #|  ___| | | | | |  \ | | /  ___| |_   _| | | /  _  \ |  \ | | /  ___/ 
@@ -819,62 +791,6 @@ sub prime53 {
 	return $pos;
 }
 
-# sub pare_seq_combine {
-# 	my ($seq1,$seq2) = @_;
-	
-# 		if (defined $seq1) {
-# 			if (length($seq1) >= length($seq2)) {
-# 				return $seq1;
-# 			}
-# 			else {
-# 				return $seq2;
-# 			}
-# 		}
-# 		else {
-# 			return $seq2;				
-# 		}
-# }
-#
-# sub pare_abun_total {
-# 	my ($chr,$start,$end) = @_;
-	
-# 	my $region_total = 0;  # regional_total can be zero if there is no pare located in the specified range
-# 	my $seq; 
-# 	#call the varant %PARE_alignment
-# 	foreach my $pos ($start..$end) {
-# 		foreach my $strand ("+","-") {
-# 			if ($PARE_alignment{$chr}->{$pos}->{$strand}->{'abun'}) {
-# 				$region_total += $PARE_alignment{$chr}->{$pos}->{$strand}->{'abun'};
-# 			}
-# 		}
-# 	}
-# 	return $region_total;
-# }
-
-# sub top_pare {
-# 	my ($chr,    $pos1,    $pos2, $return_no) = @_;
-# 	my @tmp = ();
-	
-# 	foreach my $pos ($pos1..$pos2) {
-# 		foreach my $strand ("+","-") {
-# 			if ($PARE_alignment{$chr}->{$pos}->{$strand}->{'seq'}) {
-# 				my $seq   = $PARE_alignment{$chr}->{$pos}->{$strand}->{'seq'};
-# 				my $abun  = $PARE_alignment{$chr}->{$pos}->{$strand}->{'abun'};
-# 				push(@tmp,[$abun,$chr,$pos,$strand,$seq]);
-# 			}
-# 		}
-# 	}
-# 	my @sorted = map{$tmp[$_]} sort{$tmp[$b]->[0] <=> $tmp[$a]->[0]}  0..$#tmp;
-    
-# 	my @list;
-# 	foreach my $idex (0..($return_no - 1)) {
-# 		if ($sorted[$idex][1]) {
-# 			push(@list,$sorted[$idex]);
-# 		}
-# 	}
-# 	return(@list);
-# }
-
 sub candidate_judge {
 	my ($top_1_pr, $motif_prime, $cluster_start, $cluster_end,$rl,$cut) = @_;
 	my ($top_1_pare_abun,$top_1_pare_chr,$top_1_pare_pos,$top_1_pare_strand,$top_1_pare_seq) = @{$top_1_pr};
@@ -1001,9 +917,4 @@ sub top3_phase_judge {
 ## Log Change
 ## Removed -k mode in bowtie and added -a, replaced -n mode with -v and added -m ceiling. 
 ## In case of transcriptome/scaffold version -m ceiling is kept high as these can match to multiple isoforms
-
-
-
-
-
-
+## Cleaned up a little

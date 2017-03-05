@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.22 01/08/17
+## Updated: version-1.23 02/28/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 
@@ -10,7 +10,7 @@
 ### non-redundant set of phased loci. Also uniq phased loci from each library.
 ### Contact: atulkakrana@gmail.com
 
-import os,glob,sys,difflib,time,shutil,argparse,math
+import os,glob,sys,difflib,time,shutil,argparse,math,sqlite3,operator
 import operator,datetime,subprocess,multiprocessing,re
 from multiprocessing import Process, Queue, Pool
 from operator import itemgetter
@@ -18,9 +18,10 @@ from itertools import groupby
 
 ########### PHASER DEVELOPER SETTINGS ########
 
-setFile         = "phaser.set"
-memFile         = "collapser.mem"
+setFile         = "phasworks.set"
+memFile         = "phasmerge.mem"
 res_folder      = "summary_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))      ## Folder with all ther results
+comp_folder     = "compare_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))
 cleanup         = 1
 cores           = 0
 
@@ -51,32 +52,145 @@ startbuff       = 0                                                 ## While ext
                                                                     ## start position in phased ID has this buffer added, ## so minus this buffer 
                                                                     ## for better matching with real loci
 
+maxTagRatioCut  = 0.65
+phasCyclesCut   = 8
+totalAbunCut    = 500
+
+
+#### ANNOTATION DEFAULTS ############
+
+overlapPerc     = 0.1       ## Minimum percentage of PHAS covered by exon. Keep 0 for finding overlapping genes and 0.20 or above for finding precursors
+overlapCutoff   = 50       ## Values of minimum overlap in nts. This is required if PHAS overlap is checked for precursors and not overlap with any region of genes. FOr precursors one will expect an overlap of 4 phases or more
+annomode        = 3         ## 1: PASA feature (GTF) file | 2: Trinity | 3: Rocket feature (GTF) file or generic gtf file with missing "transcript" entry | 4: Both rocket and trinity feature files | 5: PacBio GTF | 6: Comprehensive transciptome (from PASA) - NOTE: New mode should be registered in overlapchecker function
+
 
 #### Command Line ##############################
 ################################################
 parser = argparse.ArgumentParser()
-flags = parser.add_argument_group('required arguments') ## Add required arguments to this group and optional to parser
+# flags = parser.add_argument_group('required arguments') ## Add required arguments to this group and optional to parser
 
-flags.add_argument('-dir',  default='None', type=str, help='directory from your'\
-    'phaser run which need to be summarized. Required parameter', required=True)
-parser.add_argument('-pval',  default='', type=str, help='pvalue cutoff to '\
-    'filter the phased siRNAs loci or transcipts. Optional parameter', required=False)
 
-# args = parser.parse_args()
+reqflags        = parser.add_argument_group("required arguments")
+mergeflags      = parser.add_argument_group("Additional/Optional arguments required for --merge mode") ## Add required arguments to this group and optional to parser
+compflags       = parser.add_argument_group("Additional/Optional arguments required for --compare mode") ## Add required arguments to this group and optional to parser
+
+reqflags.add_argument('-mode', default='merge', help= 'merge: For summarizing results from'\
+    ' sRNA libraries of choice | compare: To compare PHAS summaries from two different set of libraries.'\
+    '[Default: merge mode]',required=True)
+reqflags.add_argument('-dir',  default='None', type=str, help='directory from your'\
+    ' phasdetect run which need to be summarized. [Compulsory]', required=True)
+
+mergeflags.add_argument('-pval',  default='', type=str, help='pvalue cutoff to'\
+    ' filter the phased siRNAs loci or transcipts. [Optional]', required=False)
+mergeflags.add_argument('-gtf',  default='', type=str, help='GTF file from genome'\
+    ' annotation or transcriptome mapped to genome. GTF file must be formatted using'\
+    ' gffread utility [Optional]', required=False)
+mergeflags.add_argument('-safesearch',  default='T', type=str, help='Turning this ON'\
+    ' filters weakly phased loci based on best k-value, maxtagratio and abundance'\
+    ' T: For turned ON (default) | F: Turned OFF.[Optional]', required=False)
+
+compflags.add_argument('-dir2',  default='None', type=str, help='another directory from'\
+    ' your phasmerge run, which need to be compared to first one. [Compulsory]', required=False)
+
 args = parser.parse_args()
 
-## If no directory specified
-if args.dir == None:
-    print("\nPlease specify directory from phaser analysis using the '-dir' parameter")
-    print("To see all requred parameters, run: python3 collapser -h\n")
+#### CHECKS 
+if args.mode != "merge" and args.mode != "compare":
+    print("Unknown value %s for '-mode' supplied" % (args.mode))
+    # print("Please input correct mode 'merge' or 'compare'")
+    parser.print_help()
     sys.exit()
 
-## If user add "/" at end of path, this is removed
-if args.dir.endswith("/"):
-    args.dir = args.dir[0:-1]
 
-#### COLLAPSER FUNCTIONS ########################
-#################################################
+if args.mode == "merge":
+    if args.dir == None:
+        print("\nPlease specify directory from phasmerge analysis using the '-dir' parameter")
+        print("To see all requred parameters, run: python3 phasmerge -h\n")
+        parser.print_help()
+        sys.exit()
+
+elif args.mode == "compare":
+    if args.dir == None:
+        print("\nPlease specify first directory from phasmerge analysis using the '-dir' parameter")
+        print("To see all requred parameters, run: python3 collapser -h\n")
+        parser.print_help()
+        sys.exit()
+    elif args.dir2 == None:
+        print("\nPlease specify a second directory for the comparison between PHAS summaries, use the '-dir2' parameter")
+        print("Like the first directory this must be a reesult from phasmerge analysis")
+        print("To see all requred parameters, run: python3 phasmerge -h\n")
+        parser.print_help()
+        sys.exit()
+    else:
+        ## All required values supplied by user
+        pass
+
+else:
+    print("Check your input for '-mode' parameter ")
+    parser.print_help()
+    sys.exit()
+
+
+#### CLEANUPS
+if args.dir.endswith("/"): ## If user add "/" at end of path, this is removed
+    args.dir = args.dir[0:-1]
+if args.dir2.endswith("/"):
+    args.dir2 = args.dir2[0:-1]
+
+#### COLLAPSER FUNCTIONS ####
+#############################
+
+def checkDependency():
+    '''Checks for required components on user system'''
+
+    print("\n#### Fn: checkLibs ###########################")
+    
+    goSignal  = True ### Signal to process is set to true 
+
+    ### Check PYTHON version
+    pythonver = sys.version_info[0]
+    if int(pythonver) >= 3:
+        print("--Python v3.0 or higher          : found")
+        pass
+    else:
+        print("--Python v3.0 or higher          : missing")
+        goSignal    = False
+        # print("See README for how to INSTALL")
+
+    if args.gtf:
+        ### Check sqlite3 module for python3
+        if 'sqlite3' in sys.modules:
+            print("--sqlite3 (python)               : found")
+            pass
+        else:
+            print("--sqlite3 (python)               : missing")
+            goSignal    = False
+            # print("See README for how to INSTALL")
+
+        ### Check SQLite installation
+        issqlite3 = shutil.which("sqlite3")
+        if issqlite3:
+            print("--SQLite (v3)                    : found")
+            pass
+        else:
+            print("--SQLite (v3)                    : missing")
+            goSignal    = False
+            # print("See README for how to INSTALL")
+
+
+    if goSignal == False:
+        if args.gtf:
+            print("\n** Please install the missing libraries required for matching the annotations")
+            print("**'phasmerge' will work fine without the '-gtf' option")
+            print("**'phasmerge' has unmet dependendies and will exit for now\n")
+            sys.exit()
+
+        else:
+            print("\n** Please install the missing libraries before running the analyses")
+            print("**'phasmerge' has unmet dependendies and will exit for now\n")
+            sys.exit()
+
+    return None
 
 def readSet(setFile):
     '''
@@ -86,11 +200,11 @@ def readSet(setFile):
     if os.path.isfile(setFile):
         pass
     else:
-        print("---Settings file 'prepro.set' not found in current directory")
+        print("---Settings file 'phasworks.set' not found in current directory")
         print("---Please copy it to same directory as script and rerun")
         sys.exit()
 
-    print("#### Fn: Settings Reader ####################")
+    print("\n#### Fn: Settings Reader ####################")
     
     fh_in   = open(setFile, 'r')
     setFile = fh_in.readlines()
@@ -111,43 +225,36 @@ def readSet(setFile):
                 if param.strip() == '@runType':
                     global runType
                     runType = str(value.strip())
-                    print('User Input runType:              ',runType)
+                    print('User Input runType:              :',runType)
 
                 elif param.strip() == '@index':
                     global index
                     index = str(value.strip())
-                    print('User Input index location:       ',index)
-
-                elif param.strip() == '@db':
-                    global db
-                    db = str(value.strip())
-                    print('User Input sRNA DB:              ',db)
-
-                elif param.strip() == '@fetchLib':
-                    global fetchLib
-                    fetchLib = str(value.strip())
-                    print('User Input to auto fetch libs:   ',fetchLib)
+                    if index:
+                        print('User Input index location        :',index)
+                    else:
+                        print('User Input index location        : None')
 
                 elif param.strip() == '@userLibs':
                     global libs
                     # libs = list(map(str,value.strip().split(',')))
                     libs     = [str(x) for x in value.strip().split(',') if x.strip() != '' ] ## This is my dope...
-                    print('User Input Libs:                 ',libs)
+                    print('User Input Libs:                 :',libs)
 
                 elif param.strip() == '@reference':
                     global reference
                     reference = str(value.strip())
-                    print('User Input reference:             ',reference)
+                    print('User Input reference:            :',reference)
 
                 elif param.strip() == '@phase':
                     global phase
                     phase = int(value.strip())
-                    print('User Input for phase length:     ',phase)
+                    print('User Input for phase length:     :',phase)
                 
                 elif param.strip() == '@path_prepro_git':
                     global phaster_path
                     phaster_path = str(value.strip()).rstrip("/")+"/phaster"
-                    print('User Input for phaster path:     ',phaster_path) 
+                    print('User Input for phaster path:     :',phaster_path) 
 
             else:
                 #print("Missed line:",line)
@@ -168,8 +275,8 @@ def pvaluereader():
     else:
         print("Specified directory not found: %s" % (args.dir))
         print("Please confirm the directory path, or")
-        print("confirm 'phaser' run finished successfully")
-        print("To see all required parameters, run: python3 collapser -h\n")
+        print("confirm 'phasdetect' run finished successfully")
+        print("To see all required parameters, run: python3 phasmerge -h\n")
         print("Script exiting...\n")
         sys.exit()
 
@@ -190,7 +297,7 @@ def pvaluereader():
 
     ## Sanity check #######
     if not pvalS:
-        print("No 'clusters' found - please confirm 'phaser' run finished successfully")
+        print("No 'clusters' found - please confirm 'phasdetect' run finished successfully")
         print("Otherwise there are no PHAS clusters in your data")
         sys.exit()
     else:
@@ -220,7 +327,7 @@ def pvaluereader():
             ### Bad luck no matching or better p-value found
             print("\nNo PHAS cluster at or above user specified p-val cutoff %s" % (args.pval))
             print("Choose a lower value from these options: %s" % (", ".join(str(x) for x in pval_sorted)))
-            print("Alternatively, you can run 'collapser' without the '-pval' switch, phasTER will try to find best pvalue for analysis")
+            print("Alternatively, you can run 'phasmerge' without the '-pval' switch, phasTER will try to find best pvalue for analysis")
             sys.exit()
 
         else:
@@ -244,7 +351,7 @@ def pvaluereader():
             print("** To continue, please specify a lower p-value using '-pval' switch")
             print("** Possible values for '-pval' switch are : %s" % (", ".join(str(x) for x in pval_sorted)))
             print("** Recommended value for '-pval' switch is: %s" % (pcutoff))
-            print("** Recommended command: python3 collapser -dir %s -pval %s" % (args.dir,pcutoff))
+            print("** Recommended command: python3 phasmerge -dir %s -pval %s" % (args.dir,pcutoff))
             sys.exit()
 
     # sys.exit()
@@ -263,7 +370,7 @@ def prepare(pcutoff,libs,res_folder):
     ### Make a new folder ##############################
     ####################################################
     temp_folder = "./%s/%s" % (res_folder,"temp")
-    print("WARNING: 'collapser' results exist from earlier run, these will be deleted")
+    print("WARNING: 'phasmerge' results exist from earlier run, these will be deleted")
     shutil.rmtree("%s" % (res_folder),ignore_errors=True)
     os.mkdir("%s" % (res_folder))
     os.mkdir("%s" % (temp_folder))
@@ -324,9 +431,9 @@ def prepare(pcutoff,libs,res_folder):
     ### Sanity Check ##################################
     ###################################################
     if acount == 0 or bcount == 0 :
-        print("** No phaser results detected")
-        print("** Check if periodicity i.e. 21nt, 22nt or 24nt from phaser analysis")
-        print("   and periodicity mentioned in 'phaser.set' is same")
+        print("** No phasdetect results detected")
+        print("** Check if periodicity i.e. 21nt, 22nt or 24nt from phasdetect analysis")
+        print("   and periodicity mentioned in 'phasworks.set' is same")
         sys.exit()
     else:
         pass
@@ -336,298 +443,6 @@ def prepare(pcutoff,libs,res_folder):
     # sys.exit()
 
     return temp_folder,clustfile
-
-def removeRedundant(temp_folder,p_val,fileType,overlapCutoff,pcutoff):
-    """
-    Remove redundant entries by checking those in the pool
-    """
-    # print(overlapCutoff)
-    # sys.exit()
-
-    print ("\n#### Fn: PHAS collapser #########################")
-
-    fh_out = open('PHASRedundant.log','w')
-    ##Read files
-    if fileType     == 'Y':
-        fls         = glob.glob(r'./%s/*.YES.by.PARE.txt' % (temp_folder))
-    elif fileType   == 'N':
-        fls         = glob.glob(r'./%s/*.YES.by.PARE.txt' % (temp_folder))
-    else:
-        ### This is used by default
-        fls         = glob.glob(r'./%s/*converted.list' % (temp_folder))
-        
-    #print (fls,'\n')
-    #print ('Total files passed for redundancy removal: %s' % (len(fls)))
-    
-    main_dict   = {} ## declare empty dictionary
-    anum        = 1 ## To name PHAS loci
-    for afile in fls: ###
-        print ('**\nAnalyzing file: %s\n' % (afile))
-        tmp_dict    = {}   ## Dictionary to store values for one file - recycled after every file
-        tmp_list    = []   ## List to hol dall co-odinates before making a dictionary based on chromosme
-        neg_list    = []   ## List to store keys that needs to be removed
-        fh_in       = open(afile, 'r')
-        alib        = afile.split('/')[-1].split('.')[0] ###
-        # print ("File:",afile,"lib:",alib)
-        
-        shutil.rmtree('./temp',ignore_errors=True)
-        os.mkdir('./temp')
-        outfile     = './temp/PHAS_Uniq_%s' % (afile.split('/')[-1]) ### File to record unique entries of every library
-        fh_out2     = open(outfile,'w')
-        
-        ###First Instance - Fill up the dictionary with entries from first file
-        if not main_dict.values(): ## First file will populate dictionary
-            lines = [i for i in fh_in if i[:-1]] ## Remove empty lines one liner and read all with content
-            
-            for ent in lines:
-                ent_splt    = ent.strip('\n').split('\t')
-                
-                if float(ent_splt[1]) == float(pcutoff): ### Equals p-value cut-off specifed above
-                    key     = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])    ### chrid, start and end makes a key
-                    
-                    chrid   = ent_splt[2]
-                    start   = int(ent_splt[3])
-                    end     = int(ent_splt[4]) ## 1 added because when opening a range using start and end, end number is not included in range - - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
-                    
-                    value = ((chrid,start,end),ent_splt,alib,key) ## Added key in value so that we don't need to make it later
-                    # print("Key",key,"| Value",value)
-                    tmp_dict[key] = value
-                    
-
-            main_dict.update(tmp_dict) ## Update the main dict if this is the first file
-
-        ## Second and further Instance - Match the entries of new file with dictioary and add new one #############
-        else:                           ## Dictionary has keys and their values populated from first file and now remove redundancy
-            lines = [i for i in fh_in if i[:-1]] ## Remove empty lines one liner
-            for ent in lines:
-                ratiodict       = {}           ## Dictonary to hold ratios of comparision of this entry with all in dictionary
-                ent_splt        = ent.strip('\n').split('\t')
-                #print('\nCurrent entry:',ent_splt)
-    
-                ### Compare with dict entries and get ratio
-                if float(ent_splt[1]) == float(pcutoff): ### Check p-value cutoff
-                    #print('Adding')
-                    new_chrid   = ent_splt[2] ## Chromosome or transcript name
-                    new_start   = int(ent_splt[3])
-                    new_end     = int(ent_splt[4])  ### 1 added because when opening a range using start and end, end number is not included in range - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
-                    newRegion   = list(range(new_start,new_end))
-                    
-                    ## print('matching')
-                    for i in main_dict.values():    ## Compare with all dictionary values
-                        #print(i)
-                        existKey    = i[3]
-                        exist_chrid = i[0][0]
-                        exist_start = i[0][1]
-                        exist_end   = i[0][2]
-                        if new_chrid == exist_chrid: ## Check if chr or transcript is same
-                            #print (i, main_dict[i])
-                            existRegion = list(range(exist_start,exist_end))
-                            #print (existRegion,newRegion)
-                            sm=difflib.SequenceMatcher(None,existRegion,newRegion)
-                            ratiodict[str(existKey)]=round(sm.ratio(),2) ### Make a dict of main dict entries and their comparision ratio with current new entry
-
-                        else:
-                            ratiodict[str(existKey)]=round(0.00,2) ## None of the existing entry matches with the current ones
-                            pass
-                else:
-                    #print('p-value cutoff not matching')
-                    continue
-
-
-                ############################################################################################################################
-                ## Decide if entry is different enough to be added - Get the entry with max match to one being tested and make its key again
-                
-                existKey = max(ratiodict,key=ratiodict.get)         ## Key from main_dict with max comparable ratio for current entry
-                maxratio = ratiodict[existKey]                      ## Max ratio with the earlier phased locus
-                # print("\n\n#####################")
-                print(existKey.strip(),maxratio)                    ## If maxratio is zero same entry will appear again here
-                
-                
-                ## Key for current entry is made only if there is some match in region
-                newKey = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])
-                newValue = ((new_chrid,new_start,new_end),ent_splt,alib,newKey) 
-                
-                if maxratio <= overlapCutoff: ### Overlap is less then cutoff then treat as new loci and no need to delete any entry from existing values
-                    #print ('Adding new key')
-                    tmp_dict[newKey]=newValue ## Life = one file
-                    fh_out2.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (newValue[1][0],newValue[1][1],newValue[1][2],newValue[1][3],newValue[1][4],newValue[1][5],newValue[1][6])) ### Entries unique to each library - library name included in file name
-    
-                elif maxratio > overlapCutoff: #### Choose the longest loci
-                    # print('Selecting longest loci')
-                    # print('Remade',existKey, 'New Key',newKey,)
-                    achrid,astart,aend = existKey.rsplit("-",2) ## Start and end extracted from existKey because exist_start and exist_end belonged to last ent in dictionary and not the
-                                                                ## one with max overlaping existKey
-                    # print ('Length of existing:%s | Length of new:%s' % ( (int(aend)-int(astart)+1), (int(new_end)-int(new_start)+1) ) )
-                    
-                    if (int(exist_end)-int(exist_start)+1) < (int(new_end)-int(new_start)+1): ### New Loci is longer ------------------------>>>>>>>>>>>>>>>>>. Check
-                        # print ('New phased loci is longer')
-                        neg_list.append(existKey)
-                        tmp_dict[newKey]=newValue
-                    
-                    else: ## The loci in dictionary is longer
-                        # print('Existing phased loci is longer or equal to new')
-                        pass
-                else:
-
-                    # print('Redundant')
-                    pass
-                
-            main_dict.update(tmp_dict) ### Update the main dict
-            
-            ######################## Test ####################
-            ##print ('Dictionary')
-            #fh_test = open('keysTest','w')
-            #for i in main_dict.keys():
-            #    #print (i)
-            #    fh_test.write('%s\n' % i)
-            #print ('\nLength of dictionary: %s' % (len(main_dict)))
-            #
-            #
-            #fh_test2 = open('NegKeytest', 'w')
-            #for i in neg_list:
-            #    fh_test2.write('%s\n' % i)
-            #print ('Length of negative list: %s' % (len(neg_list)))
-            ################################################
-            
-            ## Remove keys in negative list before moving to another file
-            for akey in neg_list:
-                print (akey)
-                try:
-                    del main_dict[akey]
-                    print (akey, '\nKey found in main dict and is being removed')
-                except KeyError:
-                    print (akey, '\nKey not found')
-                    pass
-            # pass
-
-        print ('\n**Number of Phased loci after %s lib: %s**\n' % (alib,len(main_dict)))
-        fh_out.write('**Number of Phased loci %s lib: %s**\n' % (alib,len(main_dict)))
-        fh_out2.close()
-    
-    print ('Number of final phased loci: %s' % (len(main_dict)))
-    fh_out.write('Number of final phased loci: %s' % (len(main_dict)))
-    fh_out.close()
-    return main_dict
-
-def compare(temp_folder,fileType,pcutoff):
-    """
-    compare two csv results files generated from script - Format should be same for both files 
-    """
-    fh_out  = open('PHASRedundant.log','w')
-    fls     = glob.glob(r'./%s/*converted.list' % (temp_folder))
-    
-    main_dict   = {} ## declare empty dictionary
-    anum        = 1 ## To name PHAS loci
-    
-    for afile in fls: ###
-        print ('**\nAnalyzing file: %s\n' % (afile))
-        tmp_dict    = {}## Dictionary to store values for one file - recycled after every file
-        tmp_list    = [] ## List to hol dall co-odinates before making a dictionary based on chromosme
-        neg_list    = []## List to store keys that needs to be removed
-        fh_in       = open(afile, 'r')
-        alib        = afile.split('/')[-1].split('.')[0]###
-        # print ("File:",afile,"lib:",alib)
-        
-        outfile     = 'PHAS_Uniq_%s' % (afile.split('/')[-1]) ### File to record unique entries of every library
-        fh_out2     = open(outfile,'w')
-        
-        ###  First Instance - Fill up the dictionary with entries from first file
-        if not main_dict.values(): ## First file will populate dictionary
-            lines       = [i for i in fh_in if i[:-1]] ## Remove empty lines one liner and read all with content
-            
-            for ent in lines:
-                print(ent.strip('\n'))
-                ent_splt = ent.strip('\n').split('\t')
-                #if float(ent_splt[1]) == float(pcutoff): ### Equals p-value cut-off specifed above
-                key     = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])###Chr id, start and end makes a key
-                
-                chrid   = int(ent_splt[2])
-                start   = int(ent_splt[3])
-                end     = int(ent_splt[4]) ## 1 added because when opening a range using start and end, end number is not included in range - - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
-                value   = ((chrid,start,end),ent_splt,alib,key)
-                tmp_dict[key] = value
-                print('Value:',value)
-            main_dict.update(tmp_dict) ## Update the main dict
-
-        ##Second and further Instance - Match the entries of new file with dictioary and add new one#############
-        else: ## Dictionary has keys and value spopulated from first file and now remove redundancy
-            lines = [i for i in fh_in if i[:-1]] ## Remove empty lines one liner
-            for ent in lines:
-                ratiodict= {}###dict to hold ratios of comaprarision of this entry with all in dictionary
-                ent_splt = ent.strip('\n').split('\t')
-                print('\nEntry: %s:' % (ent.strip('\n')))
-                #print('\nCurrent entry:',ent_splt)
-    
-                ###Compare with dict entries and get ratio
-                new_chrid = int(ent_splt[2])
-                new_start = int(ent_splt[3])
-                new_end = int(ent_splt[4])### 1 added because when oening a range using start and end, end number is not included in range - Critical bug fixed in v4->v5 and later regressed/removed in v9->v10
-                value = ((chrid,start,end),ent_splt,alib)
-                print('Value:',value)
-                newRegion = list(range(start,end))
-                
-                #print('matching')
-                for i in main_dict.values():##Compare with all dictionary values
-                    #print(i)
-                    existKey = i[3]
-                    exist_chrid = i[0][0]
-                    exist_start = i[0][1]
-                    exist_end = i[0][2]
-
-
-                    if new_chrid == exist_chrid:
-                        #print (i, main_dict[i])
-                        existRegion = list(range(exist_start,exist_end))
-                        #print (existRegion,newRegion)
-                        sm=difflib.SequenceMatcher(None,existRegion,newRegion)
-                        ratiodict[str(existKey)]=round(sm.ratio(),2)### Make a dict of main dict entries and their comparision ratio with current new entry
-                    else:
-                        ratiodict[str(existKey)]=round(0.00,2) ## None of the existing entry matches with the current ones
-                        pass
-
-                ############################################################################################################################
-                ## Decide if entry is different enough to be added - Get the entry with max match to one being tested and make its key again
-
-                existKey = max(ratiodict,key=ratiodict.get)         ## Key from main_dict with max comparable                 
-                maxratio = ratiodict[existKey]                      ## Max ratio with the earlier phased locus
-                print("\n\n#####################")
-                print(existKey.strip(),maxratio)                    ## If maxratio is zero same entry will appear again here
-
-                ## Key for current entry is made only if there is some match in region
-                newKey = '%s-%s-%s' % (ent_splt[2],ent_splt[3],ent_splt[4])
-                newValue = ((new_chrid,new_start,new_end),ent_splt,alib,newKey)
-                
-                if maxratio <= 0.20: ### Overlap is less then cutoff then treat as new loci and no need to delete any entry from existing values
-                    #print ('Adding new key')
-                    tmp_dict[newKey]=newValue ## Life = one file
-                    fh_out2.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (newValue[1][0],newValue[1][1],newValue[1][2],newValue[1][3],newValue[1][4],newValue[1][5],newValue[1][6])) ### Entries unique to each library - library name included in file name
-
-                else:
-                    print('Redundant')
-                    pass
-                
-            main_dict.update(tmp_dict) ### Update the main dict
-
-            ## Remove keys in negative list before moving to another file           
-            for akey in neg_list:
-                print (akey)
-                try:
-                    del main_dict[akey]
-                    print (akey, 'Key found in main dict and is being removed')
-                except KeyError:
-                    print (akey, '\nKey not found')
-                    pass
-                
-            # pass
-
-        print ('\n**Number of Phased loci after %s lib: %s**\n' % (alib,len(main_dict)))
-        fh_out.write('**Number of Phased loci %s lib: %s**\n' % (alib,len(main_dict)))
-        fh_out2.close()
-    
-    print ('Number of final phased loci: %s' % (len(main_dict)))
-    fh_out.write('Number of final phased loci: %s' % (len(main_dict)))
-    fh_out.close()
-    return main_dict
 
 def collapser(temp_folder,fileType):
     '''
@@ -661,7 +476,7 @@ def mergePHAS(aninput):
     '''
     Takes two chr/scaffold and transcriptome specific lists and removes redundant PHAS - written to paralleized the process, and to reduce the numer of matchings required
     '''
-    print ("\n#### Fn: PHAS collapser #########################")
+    print ("\n#### Fn: PHAS collapser #####################")
 
     alist,blist = aninput
     # print("Alist",alist)
@@ -759,7 +574,7 @@ def mergePHAS(aninput):
                     tmp_dict[newKey]=newValue
                 
                 else: ## The loci in dictionary is longer
-                    print('Existing phased loci is longer or equal to new - No updates made')
+                    # print('Existing phased loci is longer or equal to new - No updates made')
                     pass
             else:
                 # print('Redundant')
@@ -969,7 +784,7 @@ def selfMerge(dictitems):
     '''
     For each library remove redudant loci either from dfferent p-values or lengths. Input is chr/scaffold and transcript specific list
     '''
-    print("\n#### Fn: selfMerge ####################")
+    print("\n#### Fn: selfMerge ###########################")
     chrkey,chrvalL  = dictitems ### Value is grouped list from python
     nonredundantL   = [] ### Final PHAS list
     processedL      = [] ### Keys for identifiers either processed or redundant
@@ -1052,7 +867,7 @@ def selfMerge(dictitems):
             pass
 
     # print("#### Self Merged",nonredundantL)
-    print("Group:%s | Total PHAS:%s | Nonredundant PHAS:%s" % (chrkey,len(chrvalL),len(nonredundantL)))
+    # print("Group:%s | Total PHAS:%s | Nonredundant PHAS:%s" % (chrkey,len(chrvalL),len(nonredundantL)))
     # sys.exit()
 
     return chrkey,nonredundantL
@@ -1096,7 +911,7 @@ def collapsedToDict(alist):
     Takes a collapsed list and converts to a dict format as required for next comaprision
     '''
 
-    print("\n#### Fn: collapsedToDict ##############")
+    print("\n#### Fn: collapsedToDict #####################")
     ### The list of results for different chr/scaffold an transcript has merged PHAS results in form of dict [(chr 1 results as dict),(chr 2 results as dict)....]
     ### Where key: chr-start-end and values: [((chr,start,end),(phase,p-val,chr,start,end),filename,chr-start-end),(....)]
     ### The dicts are already grouped based on chr/scaffold and transcript unlike mode=0
@@ -1128,7 +943,7 @@ def inputMaker(adict,bdict):
     '''
     prepares a chr/scaffold and transcript-wise list from set of two collapsed dicts. Last entry of chr/scaffold and transcriptome speciifc list is the filename
     '''
-    print ("\n#### Fn: inputMaker ##################")
+    print ("\n#### Fn: inputMaker #########################")
     ### Get unique keys i.e. chr/scaffolds and transcripts from both lists
     rawinputs   = []    ## This will hold matching tuples i.e. for a unique chr/scaffold or trascriptome that will be used for comaprisions
     keyset      = set() ## a set of unique keys from both dicts   
@@ -1156,7 +971,7 @@ def inputMaker(adict,bdict):
     acount = 0 ## Count of unique identifiers for which PHAS found
     bcount = 0 ## Count of unique identifiers for which PHAS found
     for key in keyset:
-        print ("Preparing inputs for merging for key:%s" % (key))
+        # print ("Preparing inputs for merging for key:%s" % (key))
         
         #### Values from alist
         try:
@@ -1191,8 +1006,8 @@ def inputMaker(adict,bdict):
 
     return rawinputs
 
-#### SUMMARIZER #################################
-#################################################
+#### SUMMARIZER #############
+#############################
 
 def PHASreader(coordsfile):
     '''
@@ -1251,153 +1066,155 @@ def PHASreader(coordsfile):
 
     return phasList,phashead
 
-def getClust(clustfile,phasList):
+def getClust(aninput):
 
-    print ("\n#### Fn: Cluster Search #########################")
+    # print ("\n#### Fn: Cluster Search #########################")
     
-    fh_in           = open(clustfile,'r')
-    clusters        = fh_in.read().split('>')
-    
-    resList         = [] ## Store final results as (phas,[(phasiRNA),(PhasiRNA)],[extra info])
-    resList2        = [] ## Store phasiRNAs from all clusters as (phas,[(phasiRNA),(PhasiRNA)],[extra info])
-    finalClustL     = [] ## Store matching clusters
-    
-    phasCount       = 0                                                          ## Total phased loci in file
-    uniqMatchCount  = 0                                                          ## Atleast one cluster present for one phased loci
-    allMatchCount   = 0                                                          ## Total number of matched cluster
+    ent,clusters,nphas,totalphas   = aninput   ## Input for parallelized instance
+    entL            = []        ## This will store three sublists as a single result for multiprocesing and decoded later
+    # resList         = []        ## Store final results as (phas,[(phasiRNA),(PhasiRNA)],[extra info])
+    # resList2        = []        ## Store phasiRNAs from all clusters as (phas,[(phasiRNA),(PhasiRNA)],[extra info])
+    finalClustL     = []        ## Store matching clusters
+    phasCount       = 0         ## Total phased loci in file
+    uniqMatchCount  = 0         ## Atleast one cluster present for one phased loci
+    allMatchCount   = 0         ## Total number of matched cluster
                                                             
-    for ent in phasList:                                                           ## Given an entry in coords file
-        # print(ent)
-        aname,apval,alib,phasID,get_chr_id,get_start,get_end,get_value = ent
-        # print("This is the PhasId: %s | values:%s" % (phasID,get_value))
-        print("\n\nPhaseID being queried for cluster:%s ##############" % (phasID))
-        phasCount +=1 
-        print("%s/%s phasID" % (phasCount,len(phasList)))
+    # print(ent)
+    aname,apval,alib,phasID,get_chr_id,get_start,get_end,get_value = ent
+    # print("This is the PhasId: %s | values:%s" % (phasID,get_value))
+    # print("\nPhaseID being queried for cluster:%s ##############" % (phasID))
+    phasCount +=1 
+    print("%s/%s clusters cached" % (nphas,totalphas))
 
-        ### Find matching cluster
-        matchCount          = 0        ## Total maching clusters for a phased loci - if same cluster in multiple libraries
-        finalMatchList      = []       ## Holds best cluster, from multiple libraries
-        tempAllList         = [] ## Hold phasiRNAs from all matching clusters, of use for phased transcripts to capture allphasiRNAs, must be used with low matchThres
-        for aclust in clusters[1:]:
-            tempMatchList   = [] ## To hold results of current matching cluster
-            aclust_splt     = aclust.split('\n')
-            header          = aclust_splt[0].split()
-            clust_id        = header[2]
-            chr_id          = header[6]
-            start           = header[10]
-            end             = int(header[12])+1 ##1 added because when opening a range using start and end, end number is not included in range
-            value           = (list(range(int(str(start)),int(str(end)))))
-            # print ('Cluster:', (value))
+    ### Find matching cluster
+    matchCount          = 0         ## Total maching clusters for a phased loci - if same cluster in multiple libraries
+    finalMatchList      = []        ## Holds best cluster, from multiple libraries
+    tempAllList         = []        ## Hold phasiRNAs from all matching clusters, of use for phased 
+                                    ## transcripts to capture allphasiRNAs, must be used with low matchThres
+    for aclust in clusters[1:]:
+        tempMatchList   = []        ## To hold results of current matching cluster
+        aclust_splt     = aclust.split('\n')
+        header          = aclust_splt[0].split()
+        clust_id        = header[2]
+        chr_id          = header[6]
+        start           = header[10]
+        end             = int(header[12])+1 ##1 added because when opening a range using start and end, end number is not included in range
+        value           = (list(range(int(str(start)),int(str(end)))))
+        # print ('Cluster:', (value))
 
-            if runType == 'G':                 ## Normal genomic coordinates with integer chr_id
-                # print(chr_id)
-                # get_chr_id  = str(get_chr_id)
-                get_chr_id  = int(get_chr_id)
-                chr_id      = int(chr_id)
-            else:
-                ## Chromosomes are transcript names  i.e. strings
-                pass
+        if runType == 'G':                 ## Normal genomic coordinates with integer chr_id
+            # print(chr_id)
+            # get_chr_id  = str(get_chr_id)
+            get_chr_id  = int(get_chr_id)
+            chr_id      = int(chr_id)
+        else:
+            ## Chromosomes are transcript names  i.e. strings
+            pass
 
+        
+        if get_chr_id == chr_id:
+            sm          =   difflib.SequenceMatcher(None,get_value,value) ## The rratio corresponds to larger loci i.e. match/length of longer nucleotides
+            # print("Get Value:",get_value)
+            # print("Current value",value)
+            aratio      = round(sm.ratio(),2)
+            # print("Ratio:%s" % (aratio))
             
-            if get_chr_id == chr_id:
-                sm          =   difflib.SequenceMatcher(None,get_value,value) ## The rratio corresponds to larger loci i.e. match/length of longer nucleotides
-                # print("Get Value:",get_value)
-                # print("Current value",value)
-                aratio      = round(sm.ratio(),2)
-                # print("Ratio:%s" % (aratio))
+            if round(sm.ratio(),2) >= matchThres:
+                ### Matched - phasiRNA from this cluster
+                # print ('\nMatching cluster found:%s' % ''.join(header))
+                # print("Allowed Ratio:%s | Current Ratio:%s" % (matchThres,aratio))
+                matchCount  +=1
+                finalClustL.append((aclust_splt))
                 
-                if round(sm.ratio(),2) >= matchThres:
-                    ### Matched - phasiRNA from this cluster
-                    # print ('\nMatching cluster found:%s' % ''.join(header))
-                    # print("Allowed Ratio:%s | Current Ratio:%s" % (matchThres,aratio))
-                    matchCount  +=1
-                    finalClustL.append((aclust_splt))
-                    
-                    phasiCyc    = 0    ## Stores phasing cycles
-                    phasiSig    = 0    ## Stores total abundance of phase size sRNAs
-                    otherSig    = 0    ## Stores total abundance of other size sRNAs
-                    kvalsL      = []   ## List to store kvalues for each phasiRNAs
-                    
-                    for i in aclust_splt[1:-1]:## Because header was the first entry of block and not required here, Last entry is always empty
-                        # print ("Matched Cluster:\n",i)
-                        phasient    = i.split('\t')
-                        phasiname   = phasient[4].replace("|","_")
-                        phasiseq    = phasient[5]
-                        phasilen    = int(phasient[6])
-                        phasiabun   = int(phasient[7])
-                        phasihits   = int(phasient[10].split("=")[1])
-                        phasipos    = int(phasient[3])
-                        phasistrand = phasient[2].translate(str.maketrans("+-","wc"))
-                        phasipval   = phasient[12]
-                        phasikval   = int(phasient[9].split('=')[1])
-                        # print(phasipos)
-                        # sys.exit()
+                phasiCyc    = 0    ## Stores phasing cycles
+                phasiSig    = 0    ## Stores total abundance of phase size sRNAs
+                otherSig    = 0    ## Stores total abundance of other size sRNAs
+                kvalsL      = []   ## List to store kvalues for each phasiRNAs
+                
+                for i in aclust_splt[1:-1]:## Because header was the first entry of block and not required here, Last entry is always empty
+                    # print ("Matched Cluster:\n",i)
+                    phasient    = i.split('\t')
+                    phasiname   = phasient[4].replace("|","_")
+                    phasiseq    = phasient[5]
+                    phasilen    = int(phasient[6])
+                    phasiabun   = int(phasient[7])
+                    phasihits   = int(phasient[10].split("=")[1])
+                    phasipos    = int(phasient[3])
+                    phasistrand = phasient[2].translate(str.maketrans("+-","wc"))
+                    phasipval   = phasient[12]
+                    phasikval   = int(phasient[9].split('=')[1])
+                    # print(phasipos)
+                    # sys.exit()
 
-                        # print(phasiname,phasiabun,phasiseq,phasilen)
-                        kvalsL.append(phasikval)
-                        tempMatchList.append((phasiname,phasiabun,phasiseq,phasilen,phasihits,phasipos,phasistrand,phasipval))
-                        tempAllList.append((phasiname,phasiabun,phasiseq,phasilen,phasihits,phasipos,phasistrand,phasipval)) ## Records all phasiRNAs from all clusters
+                    # print(phasiname,phasiabun,phasiseq,phasilen)
+                    kvalsL.append(phasikval)
+                    tempMatchList.append((phasiname,phasiabun,phasiseq,phasilen,phasihits,phasipos,phasistrand,phasipval))
+                    tempAllList.append((phasiname,phasiabun,phasiseq,phasilen,phasihits,phasipos,phasistrand,phasipval)) ## Records all phasiRNAs from all clusters
 
-                        if int(phasilen) == phase:
-                            phasiCyc +=1
-                            phasiSig += phasiabun
-                        else:
-                            otherSig += phasiabun
-                    sizeRatio   = round(phasiSig/(phasiSig+otherSig),2) 
-                    bestkval    = max(kvalsL) ## Best k-value achieved by this cluster
-                    # print("Current Cycles:%s | Current sig. strength:%s" % (phasiCyc,phasiSig))
-                    # print("Current Cycles:%s | Current sig. strength:%s" % (bestkval,phasiSig))
-                    tempMatchList.append((bestkval,phasiSig,phasID,clust_id,sizeRatio))
+                    if int(phasilen) == phase:
+                        phasiCyc +=1
+                        phasiSig += phasiabun
+                    else:
+                        otherSig += phasiabun
+                sizeRatio   = round(phasiSig/(phasiSig+otherSig),2) 
+                bestkval    = max(kvalsL) ## Best k-value achieved by this cluster
+                # print("Current Cycles:%s | Current sig. strength:%s" % (phasiCyc,phasiSig))
+                # print("Current Cycles:%s | Current sig. strength:%s" % (bestkval,phasiSig))
+                tempMatchList.append((bestkval,phasiSig,phasID,clust_id,sizeRatio))
 
-                    ## Decide the best and remove other from list ##############################
-                    ############################################################################
-                    if finalMatchList:
-                        ## There exists a previosly matched cluster
-                        exist_bestkval = finalMatchList[-1][0]
-                        exist_phasiSig = finalMatchList[-1][1]
-                        # print("Existing Cycles:%s | Existing sig. strength:%s" % (exist_bestkval,exist_phasiSig))
+                ## Decide the best and remove other from list ##############################
+                ############################################################################
+                if finalMatchList:
+                    ## There exists a previosly matched cluster
+                    exist_bestkval = finalMatchList[-1][0]
+                    exist_phasiSig = finalMatchList[-1][1]
+                    # print("Existing Cycles:%s | Existing sig. strength:%s" % (exist_bestkval,exist_phasiSig))
 
-                        if bestkval > exist_bestkval: ## New cluster has more cycles
+                    if bestkval > exist_bestkval: ## New cluster has more cycles
+                        del finalMatchList[0:]
+                        finalMatchList = list(tempMatchList)
+                        # print("--- New cluster selected ---")
+
+                    elif bestkval == exist_bestkval: ## Both have same cycles
+                        if phasiSig > exist_phasiSig: ## New one has more total abundance of phased siRNAs
                             del finalMatchList[0:]
                             finalMatchList = list(tempMatchList)
                             # print("--- New cluster selected ---")
+                    
+                    else: ## Existing/old one was long i.e. had more cycles
+                        # print("Earlier recorded cluster is retained")
+                        pass
 
-                        elif bestkval == exist_bestkval: ## Both have same cycles
-                            if phasiSig > exist_phasiSig: ## New one has more total abundance of phased siRNAs
-                                del finalMatchList[0:]
-                                finalMatchList = list(tempMatchList)
-                                # print("--- New cluster selected ---")
-                        
-                        else: ## Existing/old one was long i.e. had more cycles
-                            # print("Earlier recorded cluster is retained")
-                            pass
+                else: ## This is the first cluster
+                    finalMatchList  = list(tempMatchList)
+                    allphasiList    = list(tempMatchList) 
 
-                    else: ## This is the first cluster
-                        finalMatchList  = list(tempMatchList)
-                        allphasiList    = list(tempMatchList) 
+                # print("\nFinal Match List:",finalMatchList)
+        else:
+            # print("No Match with this cluster")
+            pass
 
-                    # print("\nFinal Match List:",finalMatchList)
-            else:
-                # print("No Match with this cluster")
-                pass
+    tempAllList.append((bestkval,phasiSig,phasID,clust_id,sizeRatio)) ## This list has phasiRNAs from all clusters but to keep the structure same as original resList, helpful while writing results, this info is added
 
-        tempAllList.append((bestkval,phasiSig,phasID,clust_id,sizeRatio)) ## This list has phasiRNAs from all clusters but to keep the structure same as original resList, helpful while writing results, this info is added
+    phasinfo = [aname,apval,get_chr_id,get_start,get_end,alib]
+    # resList2.append((phasID,tempAllList,phasinfo))
+    # resList.append((phasID,finalMatchList,phasinfo)) ## Add best matched cluster entry to the final list, there has to be one best matched entry per PHAS
 
-        phasinfo = [aname,apval,get_chr_id,get_start,get_end,alib]
-        resList2.append((phasID,tempAllList,phasinfo))
-        resList.append((phasID,finalMatchList,phasinfo)) ## Add best matched cluster entry to the final list, there has to be one best matched entry per PHAS
+    resList     = (phasID,tempAllList,phasinfo)
+    resList2    = (phasID,finalMatchList,phasinfo)
+    
+    allMatchCount += matchCount ## Add the matched cluster for each entry
+    if matchCount > 0 :
+        uniqMatchCount+=1
         
-        allMatchCount += matchCount ## Add the matched cluster for each entry
-        if matchCount > 0 :
-            uniqMatchCount+=1
-        
-    print("\nTotal phas loci: %s | Matched: %s" % (len(phasList),len(resList)))
-    print ("SUMMARY: Phased loci in input file:%s | Loci match threshold: %s |Uniq matched cluster: %s | Total matched clusters found:%s" % (phasCount,matchThres,uniqMatchCount,allMatchCount))
-    print("NOTE: If matched clusters more then phased loci that means same cluster was present in different libs\n")
+    # print("\nTotal phas loci: %s | Matched: %s" % (len(phasList),len(resList)))
+    # print ("SUMMARY: Phased loci in input file:%s | Loci match threshold: %s |Uniq matched cluster: %s | Total matched clusters found:%s" % (phasCount,matchThres,uniqMatchCount,allMatchCount))
+    # print("NOTE: If matched clusters more then phased loci that means same cluster was present in different libs\n")
     # print("NOTE: Don't forget to uniq the miRNAs")
-    fh_in.close()
 
-    return resList,resList2,finalClustL
+    entL = [resList,resList2,finalClustL]
+
+    return entL
 
 def allphasiWriter(clustfile,resList):
     '''
@@ -1459,7 +1276,7 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
     '''
     write the results
     '''
-    print("\n#### Fn:Writer_summ #################")
+    print("\n#### Fn: Writer_summ #########################")
 
     outfile = "./%s_thres%s_phasi.csv" % (clustfile.rpartition(".")[0],matchThres)
     fh_out  = open(outfile,'w')
@@ -1478,7 +1295,6 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
     print("--PhasiRNAs extended CSV file")
     print("--Summary file with lib-specific abundances")
     for ent in resList: ## entry corresponds to one phased loci
-        # print("\nEntry",ent)
         phasID      = ent[0]
         phasCycles  = ent[1][-1][0]
         phasSig     = ent[1][-1][1]
@@ -1535,7 +1351,7 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
                     if len(tag) == int(phase): ### Size specified in settings
                             abunList.append((atag,abun_sum))
             else:
-                print("Tag recorded once already#####################################\n")
+                # print("Tag recorded once already#####################################\n")
                 # sys.exit()
                 pass
 
@@ -1558,7 +1374,7 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
             else:
                 maxTag2     = "na"
                 maxAbun2    = "0"
-                print("The prediction is of really low quality - Just one tag of phase size found")
+                print("Prediction is of really low quality - Just one tag of phase size found")
                 time.sleep(2)
                 # sys.exit()
             totalAbun   = sum(int(i[1]) for i in abunList_sort) ## Phased abundance
@@ -1575,10 +1391,22 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
             # print("Libwise Abundances",libAbunSum)
 
             ## Write - Loci, most abundant tag, most abundant tag abun,total phased abun, number of phased tags, and lib-wise abundances
-            fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo[:-1]),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2,phasinfo[-1]))
+            if args.safesearch == "T":
+                ## Apply filters
+                # print("Total Abudnace:",totalAbun)
+                if (float(maxTagRatio) <= maxTagRatioCut) and (int(phasCycles) >= phasCyclesCut) and (totalAbun >= totalAbunCut): ##  
+                    fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo[:-1]),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2,phasinfo[-1]))
+                else:
+                    ## Bad Quality prediction - Skip
+                    pass
+
+            else:
+                ### No filters applied
+                fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo[:-1]),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2,phasinfo[-1]))
+            
             abunList    = [] ## Empty before next phased loci
             libAbunList = [] ## Empty lib-iwse abundances of tag list before next entry
-            # sys.exit()
+
 
     fh_out.close()
     fh_out2.close()
@@ -1595,6 +1423,7 @@ def clustWriter(finalClustL,pcutoff):
 
     acount = 0
     for aclust in finalClustL:
+        # print(aclust)
         fh_out.write("%s\n" % ("\n".join(aclust)))
         acount+=1
 
@@ -1751,7 +1580,7 @@ def cleaner():
     '''
     print ("\n#### Garbage Cleaner #########################")
     garbage = [afile for afile in os.listdir('%s/' % (res_folder)) if afile.endswith (('.cluster','.zip'))] 
-    print("Garbage:",garbage)
+    print("Garbage:",",".join(garbage))
 
     for afile in garbage:
         apath =   "%s/%s" % (res_folder,afile)  
@@ -1842,151 +1671,926 @@ def percentile(data, percentile):
     size = len(data)
     return sorted(data)[int(math.ceil((size * percentile) / 100)) - 1]
 
-#### MAIN #######################################
-#################################################
-def main():
+#############################
+#### ANNOTATE ###############
 
-    ### Collapser #########################################
-    libs                    = readSet(setFile)
-    pcutoff,pval_sorted     = pvaluereader()
-    temp_folder,clustfile   = prepare(pcutoff,libs,res_folder)
+def gtfParser(afeatureFile):
 
-    #### Write to memeory
-    fh_mem = open("%s/%s" % (res_folder,memFile),'w')
-    fh_mem.write("@phase:%s\n" % (phase))
-    fh_mem.write("@pval:%s\n" % (pcutoff))
+    '''Parses PASA gtf file into featurename,chr,start,end,strand,feature'''
+
+    print("\nFunction: gtfParser")
     
-    global overlapCutoff
-    if runType == 'G' or runType == "S":
-        overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
-    else:
-        overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
+    with open(afeatureFile) as fh_in:
+        lines = (line.rstrip() for line in fh_in) 
+        gtfRead = list(line for line in lines if line) # Non-blank lines in a list
+    fh_in.close()
 
-    if fileType == 'L':
-        print('\nList files selected for analysis - Converting them to readable format')
-        fls     = glob.glob(r'%s/*.PARE.validation.list' % (temp_folder))
-        print ('Here are the files that will be converted:',fls,'\n')
-        print ('Total files to analyze: %s' % (len(fls)))
+    gtfList = [] ## List to hold parsed GTF entries
 
-        ### Prepare first file for comaprision
-        firstfile   = fls[0]
-        firstlist   = listConverter(firstfile,pcutoff)                          ## List of PHAS from file
-        firstgrps   = groupPHAS(firstlist)                              ## PHAS list grouped on chr/scaffold or transcripts
+    for i in gtfRead:
+        # print(i)
+        ent = i.split("\t")
+        # print("\nEnt",ent)
+        if ent[2] == "transcript" or ent[2] == "exon":
+            # print(ent)
+            gchr    = ent[0].replace("chr","")
+            gtype   = ent[2]
+            gstart  = ent[3]
+            gend    = ent[4]
+            gstrand = ent[6].translate(str.maketrans("+-","wc"))
+            aflag   = "P" ## PASA 
+            info    = ent[8].strip("\n").split(";")
+            # print(info,len(info))
+            if len(info) == 3: ## With last one empty 
+                ## Protein coding gene with a version number
+                gid     = info[0].split()[1].replace('"','') ## Gene ID
+                tid     = info[1].split()[1].replace('"','') ## Transcript ID
+                # print(gid,tid,gchr,gstart,gend,gstrand,gtype,aflag)
+                gtfList.append((gid,tid,gchr,gstart,gend,gstrand,gtype,aflag))
+            # if mode == 6 and len(info) == 4: ## With last one empty 
+            #     ## Protein coding gene with a version number
+            #     gid     = info[0].split()[1].replace('"','') ## Gene ID
+            #     tid     = info[1].split()[1].replace('"','') ## Transcript ID
+            #     # print(gid,tid,gchr,gstart,gend,gstrand,gtype,aflag)
+            #     gtfList.append((gid,tid,gchr,gstart,gend,gstrand,gtype,aflag))
+            else:
+                print("This entry has more than expected info")
+                print(info)
+                print("Debug!!")
+                sys.exit()
 
-        #### Test - serial selfMerge function
-        # firstmergeL = []
-        # for i in firstgrps:
-        #     # print("## Group",i)
-        #     akey,aval = selfMerge(i) ### Provides a merged list of PHAS for chr/scaffold and Trans
-        #     firstmergeL.append((akey,aval))
+        else:
+            print("We don't need this info for current script")
+            pass
 
-        ### Parallel mode
-        firstmergeL= PPResults(selfMerge,firstgrps)                     ## PHAS list made non-redundant from diff conf. levels
-        firstmergeD= dict((i[0], i[1]) for i in firstmergeL)            ## Dict. of PHAS list based on chr/scaffold and trans
-        collapsedL = listTocollapsed(firstmergeL)                             ## Collapsed list format incase there is just one library
-
-        ### Start the comparision
-        compareflag = False     ## Flag used to decide if it comaprision between first two files or afile and collapsed list
-        totalfls    = len(fls)
-        flcount     = 2         ## Two files are comapred in first loop so count starts from 2 
-        for fl in fls[1:]:
-            ## Prepare chr/scaffold/transcrpt specific dict of PHAS
-            print("\n#### Comparing %s/%s file" % (flcount,totalfls))
-            print("#### File being compared:%s" % (fl))
-            fllist          = listConverter(fl,pcutoff)                         ## List of PHAS from file
-            flgrps          = groupPHAS(fllist)                      ## PHAS list grouped on chr/scaffold or transcripts
-            flmergeL        = PPResults(selfMerge,flgrps)            ## PHAS list made non-redundant from diff conf. levels
-            flmergeD        = dict((i[0], i[1]) for i in flmergeL)   ## Dict. of PHAS list based on chr/scaffold and trans
-
-            if compareflag == False:
-                ## No comparision made yet this is the first and uses list directly from files
-                rawinputs       = inputMaker(firstmergeD,flmergeD) ### File names are encoded in sub-lists
-                
-                ## Test - serial mergePHAS function
-                # collapsedL = [] ### List to hold resultsfrom all chr/scaffold and trascriptome
-                # for aninput in rawinputs:
-                #     ares = mergePHAS(aninput)
-                #     collapsedL.append(ares)
-                #     # print(collapsedL)
-
-                collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
-                compareflag     = True
-                flcount         += 1
-
-            else:                
-                xD              = {}                            ## Set to empty before updation, just to be sure
-                xD              = collapsedToDict(collapsedL)   ## Reformat the collapsed results to dict from files
-                rawinputs       = inputMaker(xD,flmergeD)       ## Prepare for comaprision between both
-                collapsedL      = []                           ## Set to empty before updation, just to be sure
-                
-                ## Test - serial mergePHAS function
-                # for aninput in rawinputs:
-                #     ares = mergePHAS(aninput)
-                #     collapsedL.append(ares)
-                #     # print(collapsedL)
-
-                collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
-                flcount         += 1
-
-    elif fileType == 'C':
-        ### Function for future updates
-        listConverter(temp_folder,fileType)
-        main_dict = compare(temp_folder,fileType)
-    else:
-        ### Will not be user ever
-        print("Unknown filetype - developers setting is off ")
-        print("Download the author's orginal version from: https://github.com/atulkakrana/phasTER/releases")
+    if len(gtfList) == 0:
+        print("Check if the feature used for extraction i.e. gene, transcript, exon is correct")
+        print("Debug!!")
         sys.exit()
-        # main_dict = removeRedundant(temp_folder,pcutoff,fileType,overlapCutoff)
-    
-    collapsedfile,collapsedLfile = writer_collapse(collapsedL,pcutoff)
-    fh_mem.write("@collapsedfile:%s\n" % (collapsedfile))
-    fh_mem.write("@collapsedlist:%s\n" % (collapsedLfile))
 
+    print("First 10 entries of gtfList list: %s" % (gtfList[:10]))
+    print("Total entries fetched from GTF file:%s" % (str(len(gtfList))))
 
-    ### Summarizer ###########################################
-    
-    ## Read phasiFile
-    phasList,phashead = PHASreader(collapsedfile)
+    print ("Exiting function - gtfParser\n")
     time.sleep(1)
+    
+    return gtfList
 
-    ## Sanity check
-    if not phasList:
-        print("** No PHAS loci or transcripts found at p-value %s" % (pcutoff))
-        print("** Please use a lower p-value, here are some valid inputs: %s" % (", ".join(str(x) for x in pval_sorted)))
-        sys.exit()
+def gtfParser2(afeatureFile):
 
-    ## Get the clusters
-    resList,resList2,finalClustL = getClust(clustfile,phasList)
-    if runType == 'T' or runType == 'S':
-        allphasiFile = allphasiWriter(clustfile,resList2)
+    '''This function parses Trinity and Rocket GTF file
+    to give a trascript entry and entry for all exons - Basically this is the parser for gffread geenrated files'''
+
+    print("\n#### Fn: gtfParser ###########################")
+
+    #### Check File
+    if os.path.isfile(afeatureFile):
+        pass
     else:
-        print("File with all PHAS will not be generated for this 'runType'")
+        print("---GTF file could not found")
+        print("---Please check if it exists")
+        sys.exit()
+    
+    #### Read file
+    with open(afeatureFile) as fh_in:
+        lines = (line.rstrip() for line in fh_in) 
+        gtfRead = list(line for line in lines if line) # Non-blank lines in a list
+    fh_in.close()
+
+    #### Parse File
+    print("Parsing '%s' gtf file" % (afeatureFile))
+    gtfList     = [] ## List to hold parsed GTF entries
+    tempName    = [] ## Stores current trans name
+    tempCoords  = [] ## Temp coords
+    for i in gtfRead:
+        # print(i)
+        ent = i.split("\t")
+        # print("\nEnt",ent)
+        gScore  = ent[5] ## Score provided for mapping accuracy in Trinity GTF from GMAP 0 to 100
+        gtype   = ent[2]
+        if gtype == "exon" and (gScore == '.' or float(gScore) > 90.0):
+            # print("\nExon:",ent)
+            gchr    = re.sub("[^0-9]", "", ent[0]).lstrip('0')
+            # gchr    = ent[0]        ## To include scaffolds and fragments
+            gstart  = int(ent[3])
+            gend    = int(ent[4])
+            gstrand = ent[6].translate(str.maketrans("+-","wc"))
+            info    = ent[8].strip("\n").split(";")
+            # print(info)
+            
+            ## Parse the info and add the exon entries  #################
+            #############################################################
+
+            if annomode == 2 or (annomode == 4 and len(info)==4): ## This is  trinity GTF info
+                ## Protein coding gene with a version number
+                tid     = info[0].split()[1].replace('"','').split(".")[0] ## Transcript ID
+                gid     = info[2].split()[1].replace('"','').rpartition("_")[0] ## Gene ID
+                aflag   = 'T' ## Trinity
+                # print('-',gid,tid,gchr,gstart,gend,gstrand,gtype,aflag)
+                gtfList.append((gid,tid,gchr,gstart,gend,gstrand,gtype,aflag))
+
+            elif annomode == 3 or (annomode ==4 and len(info) >= 7): ## This is rocket GTF info, with and w/o p_id "P1" in the end
+                tid     = info[0].split()[1].replace('"','') ## Transcript ID
+                gid     = info[1].split()[1].replace('"','') ## Gene ID
+                aflag   = 'R' ## Rocket
+                # print('-',gid,tid,gchr,gstart,gend,gstrand,gtype,aflag)
+                gtfList.append((gid,tid,gchr,gstart,gend,gstrand,gtype,aflag))
+            
+            elif annomode == 5:
+                tid     = info[0].split()[1].replace('"','').split(".")[0] ## Transcript ID
+                gid     = info[1].split()[1].replace('"','').split(".")[0] ## Gene ID
+                aflag   = 'PB' ## PacBio
+                # print('-',gid,tid,gchr,gstart,gend,gstrand,gtype,aflag)
+                gtfList.append((gid,tid,gchr,gstart,gend,gstrand,gtype,aflag))
+
+            elif annomode ==6:
+                gid     = info[0].split()[1].replace('"','') ## Gene ID
+                tid     = info[1].split()[1].replace('"','') ## Transcript ID
+                aflag   = 'P' ## Pasa
+                # print('-',gid,tid,gchr,gstart,gend,gstrand,gtype,aflag)
+                gtfList.append((gid,tid,gchr,gstart,gend,gstrand,gtype,aflag))
+
+
+            else:
+                print("-This entry has more than expected info")
+                print("-Info block",info)
+                print("-Info block len:%s" % len(info))
+                print("-Debug!!")
+                sys.exit()
+
+            ## Check trascript change #########
+            ###################################
+
+            ## Check if transcript entry needs to be added i.e. all the exons from previous one has been captured
+            if not tempName or tempName[0] == tid:
+                tempName.append(tid)
+                tempCoords.append(gstart)
+                tempCoords.append(gend)
+                tempStrand  = gstrand   ## strand of last transcript
+                tempgid     = gid       ## gene name of last transcript
+                tempChr     = gchr      ## chr of last transcript
+                # print(tempCoords)
+            elif tempName[0] != tid: ## Check if the new transcript is being read. if yes then add transcript entry for old exons using tempName and tempCoords
+                # print("-New transcript read - summarizing transcript entry for earlier one")
+                tstart      = min(tempCoords)
+                tend        = max(tempCoords)
+                ttid         = tempName[0]
+                ttype       = 'transcript'
+                # print('-',tempgid,ttid,tempChr,tstart,tend,tempStrand,ttype,aflag)
+                gtfList.append((tempgid,ttid,tempChr,tstart,tend,tempStrand,ttype,aflag))
+                # sys.exit()
+                
+                ## Empty lists and fill with current exon from new transcript
+                tempName    = [] ## Empty trans name
+                tempName.append(tid)
+                tempCoords  = []
+                tempCoords.append(gstart)
+                tempCoords.append(gend) ## Empty trans coords
+                tempStrand  = gstrand   ## strand of last transcript
+                tempgid     = gid       ## gene name of last transcript
+                tempChr     = gchr      ## chr of last transcript
+                # sys.exit()
+            else:
+                print("-Unforseen scenario encountered")
+                sys.exit()
+
+        else:
+            # print("We don't need this info for current script") ## CDS or GENE
+            pass
+
+    if len(gtfList) == 0:
+        print("Check if the feature used for extraction i.e. gene, transcript, exon is correct")
+        print("Debug!!")
+        sys.exit()
+    else:
+        # print("First 10 entries of gtfList list: %s" % (gtfList[:10]))
         pass
 
-    ## Prepare dictionary of tag count files for abundance queries
-    dictList    = []
-    indexList   = list(range(len(libs)))
+    print("Total entries fetched from GTF file:%s" % (str(len(gtfList))))
+    time.sleep(1)
+    
+    return gtfList
 
-    ### Serial - Use if you get error making dictionary from huge file > 3.5 GB (can be automated)
-    # for anindex in indexList:
-    #     adict = readFileToDict(anindex)
-    #     dictList.append(adict)
+def overlapChecker(phasList,gtfList,pcutoff):
+    '''Checks for overlap between genomic PHAS and transcipts frpm GTF file'''
+    
+    print("\n#### Fn: Annotate ############################")
+    
+    ## Prepare output file ####################################
+    ###########################################################
+    outfile = "./%s/%sPHAS_p%s_annotation.txt" % (res_folder,phase,pcutoff)
+    fh_out  = open(outfile,'w')
+    fh_out.write("Name\tP-val\tphasChr\tphasStart\tphasEnd\tidentifier\tOverlapping Transcript\toverlapping trans NTs\tPercentage Overlap to Trans\toverlapping Exon NTs\tPercentage overlap to Exon\tOverlapping Exons\tTrascript Strand\tTranscript Length\n")
+    
+    ## Prepare DB and featureTables ##########################
+    ##########################################################
+    DB = 'tempdb'
+    try:
+        os.remove(DB)
+    except OSError:
+        pass
+    ## Prepare features table - This might include entries from two GTF files (mode-2), identified by the flags
+    conn            = sqlite3.connect(DB)
+    featureTable    = tableMaker(gtfList,conn) ## TURN ON ****
+    
+    # # Test Query
+    # cur = conn.cursor()
+    # cur.execute("SELECT * FROM %s where chr = 1 AND strand = 'w' limit 10" % (featureTable))
+    # test = cur.fetchall()
+    # print("Test results:",test)
+    # # sys.exit()
 
-    #### Parallel
-    dictList    = PPResults(readFileToDict, indexList)
+    ## Flags i.e. data to query - This allows combining results from Trinity and rocket to one sheet
+    flags       = [] ## Datatype to query
+    if annomode     == 1 or annomode == 6:
+        flags.append(('P'))
+    elif annomode   == 2:
+        flags.append(('T'))
+    elif annomode   == 3:
+        flags.append(('R'))
+    elif annomode   == 4:
+        flags.append(('R'))
+        flags.append(('T'))
+    elif annomode   == 5:
+        flags.append(('PB'))
+    else:
+        print("Please check the mode selected for analysis")
+        pass
 
-    ## Write the summary
-    clustfile               = clustWriter(finalClustL,pcutoff)
-    phasifile,summaryfile   = writer_summ(clustfile,resList,dictList,pcutoff)
-    fh_mem.write("@summaryfile:%s\n"    % (summaryfile))
-    fh_mem.write("@phasifile:%s\n"      % (phasifile))
-    fh_mem.close()
+    ## Find transcript overlapping PHAS ########################
+    ############################################################
+    print("Analysis for overlapping trans initialized")
+    
+    nonOverlapList  = []    ## Temp list so that these non-overlapping ones are just added once,as there is no uniq transcipt attached to them
+    overlapNameList = []    ## Just the naemes of phased entries that has overlapping results
+    for aflag in flags:     ## For provided datatypes
+        # print("\nFlag:",aflag)
+        
+        for i in phasList: ## FOr every PHAS
+            # print("\n###################Entry:",ent)
+            aphasID     = i[0]
+            aphasCycles = i[1][-1][0]
+            aphasSig    = i[1][-1][1]
+            aclustID    = i[1][-1][2]
+            asizeRatio  = i[1][-1][4]
+            aphasiList  = i[1][0:-1]
+            aent        = i[2][:-1]              ## aname, apval, achr, astart, aend, trash
+            aname,apval,achr,astart,aend = aent
+            transList   = overlapTrans(aent,conn,featureTable,aflag)
+            matchflag   = False
 
-    ### Prepare for revFerno and cleanup unwanted files
-    # shutil.copy("./%s" % (setFile), "./%s" % (res_folder))
-    if cleanup == 1:
-        cleaner()
+            ## Check overlap with exons of every overlapping transcript
+            for trans in transList:             ## For every overlapping trasc
+                atrans,tstrand,tlen,toverlap = trans
+                print("-Computing overlap for transcript: %s" % (atrans))
+                exonsOverlap,nexons     = overlapExons(aent,conn,featureTable,atrans,aflag)
+                tperc                   = round((toverlap/(aend-astart+1)),3)
+                eperc                   = round((exonsOverlap/(aend-astart+1)),3)
+
+                ## Filters and output results ####
+                ##################################
+                if tperc >= overlapPerc and toverlap >= overlapCutoff:
+                    matchflag   = True
+                    overlapNameList.append(aphasID)
+                    fh_out.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in aent), aphasID, atrans, str(toverlap), str(tperc), str(exonsOverlap), str(eperc), str(nexons), tstrand, str(tlen)))
+                else:
+                    # nonOverlapList.append((aent,aphasID)) ## This in current form wont catch those entries for which there is no overlap with transcripts i.e. PHAS with no overlap to any gene. The filter is designed to include those cases for which there is an overlap to transcripts but not with exons
+                    pass
+
+            ## Record non-overlapping
+            if matchflag == False:
+                nonOverlapList.append((aent,aphasID))
+
+    #### Write results for which no overlapping transcript was found
+    writtenList = [] ## Temp list to check the result for entry has been written to avoid duplicate for PHAS which has no results
+    # print(overlapNameList)
+    for bent in nonOverlapList:
+        # print(bent)
+        bphasID     = bent[1]
+        if (bphasID) not in overlapNameList and (bphasID not in writtenList):
+            fh_out.write("%s\t%s\tx\tx\tx\tx\tx\tx\tx\tx\n" % ('\t'.join(str(x) for x in bent[0]),bphasID,))
+            writtenList.append(bphasID)
+     
+    fh_out.close()
+
+    return outfile
+
+def tableMaker(alist,conn):
+    '''makes SQLlite table for query'''
+
+    print("Preparing SQL table with GTF features")
+
+    cur = conn.cursor()
+
+    ## Make table
+    featuretable = "tempTable"
+    cur.execute('''DROP TABLE IF EXISTS %s''' % (featuretable)) ### Drop Old table - while testing    
+    conn.commit()
+    
+    try:
+        cur.execute('''CREATE TABLE %s (gene varchar(255),trans varchar(255),chr varchar(255), start integer, end integer, strand varchar(10), type varchar(255),flag varchar(255))''' % (featuretable))
+        conn.commit()
+        acount = 0
+        for i in alist:
+            # print(i)
+            gid,tid,gchr,gstart,gend,gstrand,gtype,aflag = i
+            if gchr:
+                ## Check if there is a chr assigned otherwise comaprsion cant be done
+                acount+=1
+                # print ('Gene:',gid,'Trans:',tid,'| Chr:',gchr,'| Start:',gstart,'| End:',gend, '| Strand:',gstrand,'| Type:',gtype,'| Flag:',aflag)
+                cur.execute("INSERT INTO %s VALUES ('%s','%s','%s',%d,%d,'%s','%s','%s')" % (featuretable,str(gid),str(tid),str(gchr),int(gstart),int(gend),str(gstrand),str(gtype),str(aflag))) ### Integer made string to accomodate scaffolds or fragments
+                # featureList.append((str(aname),int(achr),int(astart),int(aend),str(astrand)))
+                #conn.commit()
+    
+    except sqlite3.Error:
+        print('ERROR:',Error)
+        sys.exit()
+
+    print("Feature table made with %s entries" % (acount))
+
+    return featuretable
+
+def overlapTrans(ent,conn,featureTable,aflag):
+    '''This function returns a list of transcipts that overlaps with a PHAS'''
+    cur         = conn.cursor()
+    transList   = [] ## Store the transcipts that overlap
+    # print("++++",ent)
+    aname,apval,achr,astart,aend = ent
+
+    # print("-Flag being queried:%s" % (aflag))
+    # print("-Query entry:",ent)
+    
+    ## trans flanking phas or enclaved in phas
+    cur.execute("SELECT * FROM %s where chr = %s AND flag = '%s' AND ((end between %s and %s) or (start between %s and %s)) AND type = 'transcript'" % (featureTable,achr,aflag,astart,aend,astart,aend))
+    flankTrans = cur.fetchall()
+
+    ## PHAS enclaved in trans
+    cur.execute("SELECT * FROM %s where chr = %s AND flag = '%s' AND (%s between start and end) AND (%s between start and end) AND type = 'transcript'" % (featureTable,achr,aflag,astart,aend))
+    bigTrans = cur.fetchall()
+
+
+    # print("flanking Trans:",flankTrans)
+    # print("Long Trans:",bigTrans)
+
+    ## Combine both lists and report overlapping trans
+    allTrans    = flankTrans + bigTrans
+    for i in allTrans:
+        # print(i)
+        atrans  = i[1]
+        astrand = i[5] 
+        alen    = i[4]-i[3]
+        cur.execute("SELECT * FROM %s where flag = '%s' AND trans = '%s' AND type = 'transcript'" % (featureTable,aflag,atrans))
+        transinfo = cur.fetchall() 
+        # print(transinfo)
+
+        toverlap = 0
+        tstart  = transinfo[0][3]
+        tend    = transinfo[0][4]
+        
+        ## Trans is enclaved
+        if astart <= tstart and aend >= tend:
+            # print("-exon enclaved")
+            toverlap = tend - tstart + 1
+
+        ## PHAS is enclaved
+        elif tstart <= astart and tend >= aend:
+            # print("-PHAS enclaved")
+            toverlap = aend - astart + 1
+        
+        ## Overlap at 5' of PHAS, use phas start as reference
+        elif tstart <= astart and tend >= astart:
+            # print("- 5' flank")
+            toverlap = tend - astart + 1
+        
+        ## Overlap at 3' of PHAS, use PHAS end as reference
+        elif tstart <= aend and tend >= aend:
+            # print("- 3' flank")
+            toverlap = aend - tstart + 1
+
+        else:
+            # print("-Unexpected overlap encountered - Transcript Overlaps but not Exons?")
+            pass
+
+        transList.append((atrans,astrand,alen,toverlap))
+
+    # print("-Number of overlapping trans:%s" % (len(transList)))
+    # print("-transList",transList)
+
+    # if len(transList) > 0:
+    #     sys.exit()
+
+    return transList
+
+def overlapExons(ent,conn,featureTable,atrans,aflag):
+    '''This function will compute overlaps wit exons of overlapping transcripts'''
+
+    aname,apval,achr,astart,aend = ent
+    
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM %s where flag = '%s' AND trans = '%s' AND type = 'exon'" % (featureTable,aflag,atrans))
+    exons = cur.fetchall()
+    # print("-These are the exons",exons)
+
+    ## compute overlap with exons of this transcript
+    nexons          = len(exons)
+    exonsOverlap    = 0
+    for aexon in exons:
+        # print("-Checking exons:",aexon)
+        xoverlap    = 0
+        xstart      = aexon[3]
+        xend        = aexon[4]
+
+        ## Exon is enclaved
+        if astart <= xstart and aend >= xend:
+            # print("-exon enclaved")
+            xoverlap = xend - xstart + 1
+
+        ## PHAS is enclaved
+        elif xstart <= astart and xend >= aend:
+            # print("-PHAS enclaved")
+            xoverlap = aend - astart + 1
+        
+        ## Overlap at 5' of PHAS, use phas start as reference
+        elif xstart <= astart and xend >= astart:
+            # print("- 5' flank")
+            xoverlap = xend - astart + 1
+        
+        ## Overlap at 3' of PHAS, use PHAS end as reference
+        elif xstart <= aend and xend >= aend:
+            # print("- 3' flank")
+            xoverlap = aend - xstart + 1
+
+        else:
+            # print("-Unexpected overlap encountered - Transcript Overlaps but not Exons?")
+            pass
+            # sys.exit()
+
+        exonsOverlap+=xoverlap
+
+    # print("-Overlap found:%s" % exonsOverlap)
+    return exonsOverlap,nexons
+
+#### COMPARE ################
+#############################
+
+def summparse(adir):
+    '''
+    parses phaster file
+    '''
+    ### Check Folder
+    if os.path.isdir(adir): ## Check to see its a file from bowtie and not tophat mapped folder - Untested
+        # print("Directory from phaser analysis found")
+        pass
+    else:
+        print("Specified directory not found: %s" % (adir))
+        print("Please confirm the directory path, or")
+        print("confirm 'phasdetect' run finished successfully")
+        print("To see all required parameters, run: python3 phasdetect -h\n")
+        print("Script exiting...\n")
+        sys.exit()
+
+    summfileL   = [file for file in os.listdir("%s" % (adir)) if file.endswith ('_summary.txt')]
+
+
+    ### Check File
+    if len(summfileL) == 1:
+        summfile    = "%s/%s" % (adir,summfileL[0])
+    elif len(summfileL) == 0:
+        print("No summary file found in %s directory" % (adir))
+        print("Please make sure that the orginal file exists")
+        print("Did you removed it from folder? Copy it back in original format and rerun script")
+        sys.exit()
+    elif len(summfileL) > 1:
+        print("Multiple summary files found in %s directory" % (adir))
+        print("Please make sure that the orginal file exists")
+        print("Also remove any files that you made during your analysis from directory and rerun script")
+        sys.exit()
+
+    if os.path.isfile(summfile):
+        pass
+    else:
+        print("---Summary file %s not found in %s/ directory" % (summfile.rpartition("/")[-1],adir))
+        print("---Please check if file exists and rerun the script")
+        sys.exit()
+
+    print("\nFn: Read Summary #############################")
+    summL   = []
+    summD   = {}
+
+    fh_in   = open(summfile,'r')
+    fh_in.readline() ## Remove Header
+    afile   = fh_in.readlines()
+    fh_in.close()
+
+    acount = 0
+    for i in afile:
+        ent     = i.strip('\n').split('\t') ## Name, p-val, chr, start, end, identifier, best k-val, phasi ratio, max tag ratio
+        aname   = ent[0]
+        apval   = ent[1]
+        achr    = ent[2]
+        astart  = ent[3]
+        aend    = ent[4]
+        aid     = ent[5]
+        akval   = ent[6]
+        aratio  = ent[7]
+        amaxtag = ent[8]
+        avalue  = (aname,achr,astart,aend,apval,aid,akval,aratio,amaxtag)
+        # print("Phaster parsed:",avalue)
+        summL.append(avalue)
+        summD[aname] = avalue
+        acount       +=1
+
+    print("PHAS in file:%s| PHAS cached:%s" % (acount,len(summL)))
+
+    return summL,summD,summfile
+
+def compare(summL1,summD1,summL2,summD2):
+    '''
+    Compares the PHAS loci between two sumamries
+    '''
+
+    resList     = []    ## List to store final results
+    negSet      = set() ## Nt matching from summary-2
+    emptyfill   = ('x','x','x','x','x','x','x','x','x') ### Lazy wasy of filling empty cells
+    acount      = 0 ## Count of matched from List1
+    bcount      = 0 ## Count of matched from List1
+    ccount      = 0 ## Count of unmatched from List1
+    dcount      = 0 ## Count of unmatched from List2
+    ecount      = 0 ## All the matches between List1 and List2 (redundant matches)
+    #### Find Matched PHAS
+    for aphas in summL1:
+        # print(aphas)
+        aname   = aphas[0]
+        achrid  = aphas[1]
+        astart  = int(aphas[2])
+        aend    = int(aphas[3])
+        aid     = aphas[5]
+        akey    = 'a-%s-%s-%s' % (achrid,str(astart),str(aend)) ## 'a' added to diffrentiate the key from PHAS in different file that have same coordinates.
+        aregion = list(range(astart,aend))
+        matflag = False     ## Tracks the match stats for this aphas
+
+        for bphas in summL2:
+            bname   = bphas[0]
+            bchrid  = bphas[1]
+            bstart  = int(bphas[2])
+            bend    = int(bphas[3])
+            bid     = bphas[5]
+            bkey    = 'b-%s-%s-%s' % (bchrid,str(bstart),str(bend)) ## 'a' added to diffrentiate the key from PHAS in different file that have same coordinates.
+            bregion = list(range(bstart,bend))
+
+            if achrid == bchrid:
+                sm1         = difflib.SequenceMatcher(None,aregion,bregion) ## Mapping bphas over aphas
+                matchratio1 = round(sm1.ratio(),5)
+
+                if (matchratio1 >= 0.25):
+                    # print("aphas",aphas)
+                    # print("bphas",bphas)
+                    # print("Match Ratio:%s" % (matchratio1))
+                    matblocks   = sm1.get_matching_blocks() ### [(0,0,200),(),...] A list of all matches with tuple
+                                                            ### corresponding to one path cof match. In tuple first
+                                                            ### two elements are coordinates for seqeunce1 and sequence2 
+                                                            ### followed my length of match. Expect just one tuple as there
+                                                            ### is just one patch of match.
+                    # print(matblocks)
+                    amatcoord   = astart+int(matblocks[0][0])
+                    bmatcoord   = bstart+int(matblocks[0][1])
+                    matcoords   = "%s:%s" % (amatcoord,bmatcoord)
+                    # print("astart:%s | bstart:%s | amatcoord:%s | bmatcoord:%s" % (astart,bstart,amatcoord,bmatcoord))
+                    matlen      = int(matblocks[0][2])
+                    abphas  = aphas+bphas
+                    resList.append((abphas,matchratio1,matcoords,matlen))
+                    negSet.add(bid)
+                    
+                    matflag = True
+                    ecount  +=1
+
+                
+                else:
+                    ## Different PHAS loci on same chromsome and transcript
+                    pass
+            
+            else:
+                ## Different chr or trascripts
+                pass
+
+        #### aphas unmatched?
+        #####################
+        if matflag == False:
+            ## No match found for this aphas entry
+            print("No Match",aphas)
+            abphas      = aphas+emptyfill
+            matchratio  = 0 
+            matcoords   = "none"
+            matlen      = "none"
+            resList.append((abphas,matchratio,matcoords,matlen))
+            ccount      +=1
+        else:
+            ## This aphas is matched well
+            acount      +=1
+
+
+    #### Include unmatched bphas
+    ############################
+    for bphas in summL2:
+        bid     = bphas[5]
+        ccount  = 0
+        if bid not in negSet:
+            ## This bphas had no match with aphas
+            abphas      = emptyfill+bphas
+            matchratio  = 0
+            matcoords   = "none"
+            matlen      = "none"
+            resList.append((abphas,matchratio,matcoords,matlen))
+            dcount      +=1
+        else:
+            ## This bphas was matched to at-least one aphas
+            bcount      +=1
+
+
+    print("PHAS in summary1: %s | Matched:%s | Unmatched:%s" % (len(summL1),acount,ccount))
+    print("PHAS in summary2: %s | Matched:%s | Unmatched:%s" % (len(summL2),bcount,dcount))
+    print("Matched %s:%s (summary1:summary2)\n" % (acount,ecount))
+
+
+    return resList
+
+def compare_writer(resList):
+    '''
+    writes compared results to a file
+    '''
+
+    outfile = "./%s/PHASworks.compare.txt" % (comp_folder)
+    fh_out  = open(outfile,'w')
+    fh_out.write("Name.a\tChr.a\tStart.a\tEnd.a\tP-val.a\tIdentifier.a\tBest k-val.a\tPhasi ratio.a\tMax Tag Ratio.a\tName.b\tChr.b\tStart.b\tEnd.b\tP-val.b\tIdentifier.b\tBest k-val.b\tPhasi ratio.b\tMax Tag Ratio.b\tMatch Ratio\tMatch Start coords [a:b]\tMatch Length\n")
+
+    acount = 0
+    for ent in resList:
+        # print(ent)
+        phasinfo    = [str(x) for x in ent[0]]
+        matratio    = str(ent[1])
+        matcoords   = str(ent[2])
+        matlen      = str(ent[3])
+        fh_out.write("%s\t%s\t%s\t%s\n" % ("\t".join(phasinfo),matratio,matcoords,matlen))
+        acount+=1
+
+    fh_out.close()
+
+    print("Entries written: %s" % (acount))
+
+
+    return outfile
+
+#### MAIN ###################
+#############################
+def main():
+    
+    checkDependency()
+
+    if args.mode == "merge": ## Default mode
+        ### Collapser #########################################
+        libs                    = readSet(setFile)
+        pcutoff,pval_sorted     = pvaluereader()
+        temp_folder,clustfile   = prepare(pcutoff,libs,res_folder)
+
+        #### Write to memeory
+        fh_mem = open("%s/%s" % (res_folder,memFile),'w')
+        fh_mem.write("@phase:%s\n" % (phase))
+        fh_mem.write("@pval:%s\n" % (pcutoff))
+        
+        global overlapCutoff
+        if runType == 'G' or runType == "S":
+            overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
+        else:
+            overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
+
+        if fileType == 'L':
+            print('\nList files selected for analysis - Converting them to readable format')
+            fls     = glob.glob(r'%s/*.PARE.validation.list' % (temp_folder))
+            print ('Here are the files that will be converted:',fls,'\n')
+            print ('Total files to analyze: %s' % (len(fls)))
+
+            ### Prepare first file for comaprision
+            firstfile   = fls[0]
+            firstlist   = listConverter(firstfile,pcutoff)                          ## List of PHAS from file
+            firstgrps   = groupPHAS(firstlist)                              ## PHAS list grouped on chr/scaffold or transcripts
+
+            #### Test - serial selfMerge function
+            # firstmergeL = []
+            # for i in firstgrps:
+            #     # print("## Group",i)
+            #     akey,aval = selfMerge(i) ### Provides a merged list of PHAS for chr/scaffold and Trans
+            #     firstmergeL.append((akey,aval))
+
+            ### Parallel mode
+            firstmergeL= PPResults(selfMerge,firstgrps)                     ## PHAS list made non-redundant from diff conf. levels
+            firstmergeD= dict((i[0], i[1]) for i in firstmergeL)            ## Dict. of PHAS list based on chr/scaffold and trans
+            collapsedL = listTocollapsed(firstmergeL)                             ## Collapsed list format incase there is just one library
+
+            ### Start the comparision
+            compareflag = False     ## Flag used to decide if it comaprision between first two files or afile and collapsed list
+            totalfls    = len(fls)
+            flcount     = 2         ## Two files are comapred in first loop so count starts from 2 
+            for fl in fls[1:]:
+                ## Prepare chr/scaffold/transcrpt specific dict of PHAS
+                print("\n#### Comparing %s/%s file" % (flcount,totalfls))
+                print("#### File being compared:%s" % (fl))
+                fllist          = listConverter(fl,pcutoff)                         ## List of PHAS from file
+                flgrps          = groupPHAS(fllist)                      ## PHAS list grouped on chr/scaffold or transcripts
+                flmergeL        = PPResults(selfMerge,flgrps)            ## PHAS list made non-redundant from diff conf. levels
+                flmergeD        = dict((i[0], i[1]) for i in flmergeL)   ## Dict. of PHAS list based on chr/scaffold and trans
+
+                if compareflag == False:
+                    ## No comparision made yet this is the first and uses list directly from files
+                    rawinputs       = inputMaker(firstmergeD,flmergeD) ### File names are encoded in sub-lists
+                    
+                    ## Test - serial mergePHAS function
+                    # collapsedL = [] ### List to hold resultsfrom all chr/scaffold and trascriptome
+                    # for aninput in rawinputs:
+                    #     ares = mergePHAS(aninput)
+                    #     collapsedL.append(ares)
+                    #     # print(collapsedL)
+
+                    collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
+                    compareflag     = True
+                    flcount         += 1
+
+                else:                
+                    xD              = {}                            ## Set to empty before updation, just to be sure
+                    xD              = collapsedToDict(collapsedL)   ## Reformat the collapsed results to dict from files
+                    rawinputs       = inputMaker(xD,flmergeD)       ## Prepare for comaprision between both
+                    collapsedL      = []                           ## Set to empty before updation, just to be sure
+                    
+                    ## Test - serial mergePHAS function
+                    # for aninput in rawinputs:
+                    #     ares = mergePHAS(aninput)
+                    #     collapsedL.append(ares)
+                    #     # print(collapsedL)
+
+                    collapsedL      = PPResults(mergePHAS,rawinputs)## Compare PHAS from file with PHAS from collapsed list
+                    flcount         += 1
+
+        elif fileType == 'C':
+            ### Function for future updates
+            listConverter(temp_folder,fileType)
+            main_dict = compare(temp_folder,fileType)
+        else:
+            ### Will not be user ever
+            print("Unknown filetype - developers setting is off ")
+            print("Download the author's orginal version from: https://github.com/atulkakrana/phasTER/releases")
+            sys.exit()
+            # main_dict = removeRedundant(temp_folder,pcutoff,fileType,overlapCutoff)
+        
+        collapsedfile,collapsedLfile = writer_collapse(collapsedL,pcutoff)
+        fh_mem.write("@collapsedfile:%s\n" % (collapsedfile))
+        fh_mem.write("@collapsedlist:%s\n" % (collapsedLfile))
+
+
+        ### Summarizer ###########################################
+        
+        ## Read phasiFile
+        phasList,phashead = PHASreader(collapsedfile)
+        time.sleep(1)
+
+        ## Sanity check
+        if not phasList:
+            print("** No PHAS loci or transcripts found at p-value %s" % (pcutoff))
+            print("** Please use a lower p-value, here are some valid inputs: %s" % (", ".join(str(x) for x in pval_sorted)))
+            sys.exit()
+
+        ####################
+        ## Get Clusters ####
+        fh_in           = open(clustfile,'r')
+        clusters        = fh_in.read().split('>')
+        totalphas       = len(phasList)
+        nphasL          = [i+1 for i in range(len(phasList))] ## an array of numbers of rdifferent PHAS for print statement
+        rawinputs       = [(ent,clusters,nphas,totalphas) for ent,nphas in zip(phasList,nphasL)]
+        fh_in.close()
+        
+        #### Serial - Test
+        # masterL         = []
+        # for i in rawinputs:
+        #     entL = getClust(i)
+        #     masterL.append(entL)
+
+        #### Parallel - Original
+        masterL = PPResults(getClust,rawinputs)
+
+        # print("Clusters fetched for %s PHAS" % (len(masterL)))
+
+        ### Decode the inputs to three separate lists
+        resList     = []
+        resList2    = []
+        finalClustL = []
+        for aninput in masterL:
+            tempList,tempList2,tempClustL = aninput
+            resList.append(tempList)   ## Unlisting the entries i.e. removing square brackets [()]
+            resList2.append(tempList2) ## Unlisting the entries i.e. removing square brackets [()]
+            for i in tempClustL:
+                finalClustL.append(i)
+
+        # print("Length of resList:%s | resList2:%s | finalClustL:%s" % (len(resList),len(resList2),len(finalClustL)))
+        print("Total phas loci: %s | Clusters fetched: %s\n" % (len(phasList),len(resList)))
+        ####################
+        ####################
+
+
+        if runType == 'T' or runType == 'S':
+            allphasiFile = allphasiWriter(clustfile,resList2)
+        else:
+            # print("File with all PHAS will not be generated for this 'runType'")
+            pass
+
+        ## Prepare dictionary of tag count files for abundance queries
+        dictList    = []
+        indexList   = list(range(len(libs)))
+
+        ### Serial - Use if you get error making dictionary from huge file > 3.5 GB (can be automated)
+        # for anindex in indexList:
+        #     adict = readFileToDict(anindex)
+        #     dictList.append(adict)
+
+        #### Parallel
+        dictList    = PPResults(readFileToDict, indexList)
+
+        ## Write the summary
+        clustfile               = clustWriter(finalClustL,pcutoff)
+        phasifile,summaryfile   = writer_summ(clustfile,resList,dictList,pcutoff)
+        fh_mem.write("@summaryfile:%s\n"    % (summaryfile))
+        fh_mem.write("@phasifile:%s\n"      % (phasifile))
+        fh_mem.close()
+
+
+        ##################
+        #### ANNOTATE ####
+
+        #### Parse GTF ###
+        featureFile     = args.gtf
+        if annomode     == 1:   ## PASA GTF for overlapping transcripts
+            gtfList     = gtfParser(featureFile)
+        elif annomode   == 2 or annomode == 3 or annomode == 5 or annomode == 6: ## Trinity or Rocket GTF for overlapping transcipts
+            gtfList     = gtfParser2(featureFile)
+        elif annomode   == 4: ## Trinity and Rocket both for overlapping transcipts
+            gtfList1    = gtfParser2(featureFile)  ## Both lists can be identified with aflag feature
+            gtfList2    = gtfParser2(featureFile2) ## Both lists can be identified with aflag feature
+            gtfList     = gtfList1 + gtfList2
+        else:
+            print("Please input correct mode in user settings - script will exit now")
+            sys.exit()
+        
+        resFile     = overlapChecker(resList,gtfList,pcutoff)
+
+
+
+
+
+
+
+
+
+
+
+        ### Prepare for revFerno and cleanup unwanted files
+        # shutil.copy("./%s" % (setFile), "./%s" % (res_folder))
+        if cleanup == 1:
+            cleaner()
+
+        print ("\n####'phasmerge' took", round(time.time()-start,2),"seconds")
+        print ("#### Please see '%s' folder for results\n" % (res_folder))
+        print("#### 'phastrigs' can be run by command: python3 phastrigs -mode auto -dir %s -mir your-miRNA-filename\n" % (res_folder))
+
+    elif args.mode == "compare":
+
+        ##################
+        #### Prepare
+        shutil.rmtree("%s" % (comp_folder),ignore_errors=True)
+        os.mkdir("%s" % (comp_folder))
+
+        log_file    = "%s/compare.log" % (comp_folder) 
+        fh_log      = open(log_file,'w')
+        fh_log.write("Date:%s\n" % ((datetime.datetime.now().strftime("%m_%d")) ))
+        fh_log.write("Time:%s\n" % ((datetime.datetime.now().strftime("%H_%M")) ))
+
+
+        ###################
+        #### Read Summaries
+        summL1,summD1,summfile1 = summparse(args.dir)
+        summL2,summD2,summfile2 = summparse(args.dir2)
+        fh_log.write("Summary1:%s\n" % (summfile1))
+        fh_log.write("Summary2:%s\n" % (summfile2))
+
+        ##################
+        #### Compare
+        resList = compare(summL1,summD1,summL2,summD2)
+
+        ##################
+        #### Write Results
+        compfile = compare_writer(resList)
+
+
+        fh_log.close()
+
+    else:
+        sys.exit()
 
 if __name__ == '__main__': 
     if cores == 0 :
@@ -1995,14 +2599,11 @@ if __name__ == '__main__':
         nproc = int(cores)
     start = time.time()
     main()
-    print ("\n#### Summarization took", round(time.time()-start,2),"seconds")
-    print ("#### Please see '%s' folder for results\n" % (res_folder))
-    print("#### 'revFerno' can be run by command: python3 revferno -mode auto -dir %s -mir your-miRNA-filename\n" % (res_folder))
     sys.exit()
 
 
-#### Change Log ################################
-################################################
+#### Change Log #############
+#############################
 
 ## v01 -> v03
 ##Added functionality to compare between similar loci and select the longest one
@@ -2086,7 +2687,7 @@ if __name__ == '__main__':
 ## Fixed comarision based on length it was reversed before - best loci and coords
 ## This version will give best PHAS coordinates, compltely unique PHAS in final list
 ## all cluster file for p-values less then the used are picked up, because collapser usesfiles from 
-#### all diffrent confodence levels. Also the matchThres for cluster and PHAS is increased to 0.99 because
+#### all diffrent confidence levels. Also the matchThres for cluster and PHAS is increased to 0.99 because
 #### now files for all confidence are available so cluster should match at high cutoff, reducing number the
 #### total number of clusters picked up.
 ## closed lots of print statements in
@@ -2113,11 +2714,18 @@ if __name__ == '__main__':
 ## Fixed an issue if transcipt PHAS was not present for both list to be compared. If alist is empty then all element ob blist are 
 ### added to merged list. And if blist is empty the for loop to comapre doen't even used.
 
+## v1.21 -> v1.23 [major]
+## "collapser" renamed to "phasmerge"
+## Renames phaser.set and collapser.mem to phasworks.set and phasmerge.mem respectively
+## "GetClust" functiona parallelized
+## Added "compare" mode - Added additional match coords and lengths
+## Added "-gtf" match functions
+## Added dependency checks
+## "Safe search" implemented, default cutoff are in developer settings area
 
 ## To revert in public release
 ## Revert overlapCutoff back to 0.25 - Done
 ## Merge ratio in self merge (originally 0.40) - Done
-
 
 #######################################
 #### POSSIBLE PENDING ISSUES###########

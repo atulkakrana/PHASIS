@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.03 01/14/17 
+## Updated: version-v1.03 02/24/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
@@ -19,11 +19,11 @@ from os.path import expanduser
 
 
 ### Settings file
-setFile         = "phaser.set"
-memFile         = "phaser.mem"
+setFile         = "phasworks.set"
+memFile         = "phasworks.mem"
 res_folder      = "phased_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))
 home            = expanduser("~")
-phaster_path    = "%s/.phaster" % (home)
+phaster_path    = "%s/.phasworks" % (home)
 
 ## Degradome - Optional ####################################
 deg             = 'N'                               ## Use Degradome validation, IF yes enter PARE db in line below
@@ -53,9 +53,9 @@ def checkUser():
     '''
     Checks if user is authorized to use script
     '''
-    print ("\n#### Verifying User Authorization ################")
+    print ("\n#### Checking user ###########################")
     auser = getpass.getuser()
-    print("Hello '%s' - Please report issues at: https://github.com/atulkakrana/phasTER/issues" % (auser))
+    print("Hello '%s' - Please report issues at: https://github.com/atulkakrana/PHASworks/issues" % (auser))
     # if auser in allowedUser:
     #     print("Hello '%s' - Issues need to be reproted: https://github.com/atulkakrana/phasTER/issues \n" % (auser))
     # else:
@@ -70,7 +70,7 @@ def checkHost(allowedHost):
     '''
     Checks if Phster is allowed at this server
     '''
-    print ("#### Pre-run checks #########################")
+    print ("#### Pre-run checks ###########################")
     f = subprocess.Popen("hostname", stdout=subprocess.PIPE,shell= True)
     output,err = f.communicate()
     #print (output.decode("ascii"))
@@ -100,7 +100,7 @@ def checkHost(allowedHost):
 def checkDependency():
     '''Checks for required components on user system'''
 
-    print("\n#### Fn: checkLibs #####################")
+    print("\n#### Fn: checkLibs ###########################")
     
     goSignal  = True ### Signal to process is set to true 
 
@@ -177,18 +177,7 @@ def checkDependency():
         goSignal    = False
         # print("See README for how to INSTALL")
 
-    ## Check core files
-    isPhasCLust1    = os.path.isfile("%s/phasclust.genome.v2.pl" % (phaster_path))
-    isPhasCLust2    = os.path.isfile("%s/phasclust.MUL.v2.pl" % (phaster_path))
-    
-    if isPhasCLust1 is False or isPhasCLust2 is False:
-        print("--phasTER Core                   : missing")
-        goSignal    = False
-    else:
-        print("--phasTER Core                   : found")
-        pass
-
-    if goSignal     == False:
+    if goSignal == False:
         print("\n** Please install the missing libraries before running the analyses")
         # print("See README for how to install these")
         print("** revFerno has unmet dependendies and will exit for now\n")
@@ -204,11 +193,11 @@ def readSet(setFile):
     if os.path.isfile(setFile):
         pass
     else:
-        print("---Settings file 'phaser.set' not found in current directory")
+        print("---Settings file 'phasworks.set' not found in current directory")
         print("---Please copy it to same directory as script and rerun")
         sys.exit()
 
-    print("\n#### Fn: Settings Reader ####################")
+    print("\n#### Fn: Settings Reader #####################")
     
     fh_in   = open(setFile, 'r')
     setFile = fh_in.readlines()
@@ -228,39 +217,63 @@ def readSet(setFile):
                 if param.strip() == '@runType':
                     global runType
                     runType = str(value.strip())
-                    print('User Input runType:              ',runType)
+                    print('User Input runType               :',runType)
 
                 elif param.strip() == '@reference':
                     global reference
                     reference = str(value.strip())
-                    print('User Input reference location:   ',reference)
+                    print('User Input reference location    :',reference)
                 
                 elif param.strip() == '@index':
                     global index
                     index = str(value.strip())
-                    print('User Input index location:       ',index)
+                    if index:
+                        print('User Input index location        :',index)
+                    else:
+                        print('User Input index location        : None')
 
                 elif param.strip() == '@userLibs':
                     global libs
                     # libs = list(map(str,value.strip().split(',')))
                     libs     = [str(x) for x in value.strip().split(',') if x.strip() != '' ] ## This is my dope...
-                    print('User Input Libs:                 ',libs)
+                    print('User Input Libs                  :',",".join(libs))
 
                 elif param.strip() == '@libFormat':
                     global libFormat
                     libFormat = str(value.strip())
-                    print('User Input to auto fetch libs:   ',libFormat)
+                    print('user library format              :',libFormat)
 
                 elif param.strip() == '@phase':
                     global phase
                     phase = int(value.strip())
-                    print('User Input for phase length:     ',phase)
+                    print('User Input for phase length      :',phase)
                 
-                # elif param.strip() == '@path_prepro_git':
-                #     global phaster_path
-                #     phaster_path = str(value.strip()).rstrip("/")+"/phaster"
-                #     # phaster_path = str(value.strip()).rstrip("/")+"/core"
-                #     print('User Input for phaster path:     ',phaster_path) 
+                elif param.strip() == '@path_prepro_git':
+                    global phaster_path
+                    phaster_path = str(value.strip()).rstrip("/")+"/phaster"
+                    # phaster_path = str(value.strip()).rstrip("/")+"/core"
+                    print('User Input for phaster path      :',phaster_path)
+
+                elif param.strip() == '@minDepth':
+                    global minDepth
+                    minDepth = int(value.strip())
+                    if not minDepth:
+                        minDepth = 3
+                    print('User Input for min. sRNA depth   :',minDepth)
+
+                elif param.strip() == '@clustBuffer':
+                    global clustBuffer
+                    clustBuffer = int(value.strip())
+                    if not clustBuffer:
+                        clustBuffer = 250
+                    print('User Input distance b/w clusters :',clustBuffer)
+
+                # elif param.strip() == '@mismat':
+                #     global mismat
+                #     mismat = int(value.strip())
+                #     if not mismat:
+                #         mismat = 0
+                #     print('User Input for max mismatches    :',mismat)
 
             else:
                 #print("Missed line:",line)
@@ -348,9 +361,9 @@ def PHASBatch2(aninput):
     Phasing anlysis - New
     '''
 
-    print ("\n#### Fn: phaser #########################")
+    print ("\n#### Fn: phaser #############################")
     # print("\naninput\n",aninput)
-    lib,runType,index,deg,nthread,noiseLimit,hitsLimit = aninput
+    lib,runType,index,deg,nthread,noiseLimit,hitsLimit,clustBuffer = aninput
     
     ### Sanity check #####################
     if not os.path.isfile(lib):
@@ -364,14 +377,16 @@ def PHASBatch2(aninput):
     #####################################
 
 
-    pro_file = lib ### sRNA input file 
-    out_file = './%s/%s.txt' % (res_folder,lib.rpartition(".")[0]) ## Output file suffix
+    pro_file    = lib ### sRNA input file 
+    out_file    = './%s/%s.txt' % (res_folder,lib.rpartition(".")[0]) ## Output file suffix
     
     rl          = str(phase)
     # nproc2 = str(nproc)
     nthread     = str(nthread)
     sRNAratio   = str(75)
-    noiseLimit  = str(noiseLimit)
+    noiseLimit  = str(minDepth-1)
+    # mismat      = str(mismat)
+    clustBuffer = str(clustBuffer)
     print(pro_file)
 
     if runType == 'G':### Uses Whole genome as input
@@ -382,10 +397,10 @@ def PHASBatch2(aninput):
         else:
             if libFormat == "T":
                 aformat = "t"
-                retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-g", clustBuffer, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             elif libFormat == "F":
                 aformat = "f"
-                retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.genome.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-g", clustBuffer, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             else:
                 print("** Invalid '@libFormat' parameter value")
                 print("** Please check the '@libFormat' parameter value in setting file")
@@ -401,10 +416,10 @@ def PHASBatch2(aninput):
         else:   
             if libFormat == "T":
                 aformat = "t"
-                retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file, "-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file, "-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-g", clustBuffer, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             elif libFormat == "F":
                 aformat = "f"
-                retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
+                retcode = subprocess.call([perl, "%s/phasclust.MUL.v2.pl" % (phaster_path), "-i", pro_file,"-f", aformat, "-t", sRNAratio,"-n", noiseLimit, "-g", clustBuffer, "-d", index, "-px", out_file, "-rl", rl, "-cpu", nthread])
             else:
                 print("** Invalid '@libFormat' parameter value")
                 print("** Please check the '@libFormat' parameter value in setting file")
@@ -453,7 +468,7 @@ def PPBalance(module,alist):
     else:
         pass
 
-    print("nprocPP:%s" % (nprocPP))
+    print("nprocPP                          : %s" % (nprocPP))
     npool = Pool(int(nprocPP))
     npool.map(module, alist)
 
@@ -471,92 +486,28 @@ def optimize(nproc):
     else:
         nthread = 3
 
-    print("\n#### %s cores reserved for analysis #########" % (str(nproc)))
-    print("#### %s threads assigned to one lib #########\n" % (str(nthread)))
+    print("\n#### %s cores reserved for analysis ##########" % (str(nproc)))
+    print("#### %s cores assigned to one lib ############\n" % (str(nthread)))
     # time.sleep(1)
 
 
     return nthread 
 
-def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit):
+def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit,clustBuffer):
     '''generate raw inputs for parallel processing'''
 
     rawInputs = [] ## An empty list to store inputs for PP
     for alib in libs:
-        rawInputs.append((alib,runType,index,deg,nthread,noiseLimit,hitsLimit))
+        rawInputs.append((alib,runType,index,deg,nthread,noiseLimit,hitsLimit,clustBuffer))
 
     # print("These are rawInputs:",rawInputs)
 
     return rawInputs
 
-def indexBuilder_bak(reference):
-    
-    
-    print ("\n#### Fn: indexBuilder #########################")
-    ### Sanity check #####################
-    if not os.path.isfile(reference):
-        print("'%s' reference file not found" % (reference))
-        print("Please check the genomeFile - Is it in specified directory? Did you input wrong name?")
-        print("Script will exit for now\n")
-        sys.exit()
-    else:
-        print("Reference file located - Preparing to create index")
-        pass
-    #####################################
-
-    ### Clean reference ################
-    fastaclean,fastasumm = FASTAClean(reference,0)
-
-    ### Prepare Index ##################
-    print ("**Deleting old index 'folder' !!!!!!!!!!!**")
-    print("If its a mistake cancel now by pressing ctrl+D and continue from index step by turning off earlier steps- You have 2 seconds")
-    time.sleep(2)
-    shutil.rmtree('./index', ignore_errors=True)
-    os.mkdir('./index')
-    
-    genoIndex   = '%s/index/%s' % (os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Can be merged with genoIndex from earlier part if we use bowtie2 earlier
-    # genoIndex   = './index/%s' % (fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Alternative approach -Can be merged with genoIndex from earlier part if we use bowtie2 earlier
-    print('Creating index of cDNA/genomic sequences:%s**\n' % (genoIndex))
-    adcv        = "256"
-    divn        = "6"
-    # orate       = "3" 
-
-    if args.lowmem:
-        print("Running on low memory usage mode")
-        retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
-    else:
-        # print("Optimized for faster run")
-        retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
-        
-
-    if retcode == 0:## The bowtie mapping exit with status 0, all is well
-        # print("Reference index prepared sucessfully")
-        pass
-    else:
-        print("There is some problem preparing index of reference '%s'" %  (reference))
-        print("Is 'Bowtie' installed? And added to environment variable?")
-        print("Script will exit now")
-        sys.exit()
-    #####################################
-
-    ### Make a memory ###################
-    fh_out      = open(memFile,'w')
-    refHash     = (hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()) ### reference hash used instead of cleaned FASTA because while comparing only the user input reference is available
-    indexHash   = (hashlib.md5(open('%s.1.ebwt' % (genoIndex),'rb').read()).hexdigest())
-    print("\n@genomehash:%s | @indexhash:%s" % (refHash, indexHash) )
-    fh_out.write("@timestamp:%s\n" % (datetime.datetime.now().strftime("%m_%d_%H_%M")))
-    fh_out.write("@genomehash:%s\n" % (refHash))
-    fh_out.write("@index:%s\n" % (genoIndex))
-    fh_out.write("@indexhash:%s\n" % (indexHash))
-
-    print("Index prepared:%s\n" % (genoIndex))
-
-    # sys.exit()
-
 def indexBuilder(reference):
     
     
-    print ("\n#### Fn: indexBuilder #########################")
+    print ("\n#### Fn: indexBuilder #######################")
     ### Sanity check #####################
     if not os.path.isfile(reference):
         print("'%s' reference file not found" % (reference))
@@ -588,17 +539,7 @@ def indexBuilder(reference):
     if args.lowmem:
         retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
     else:
-        statInfo    = os.stat(fastaclean)
-        filesize    = round(statInfo.st_size/1048576,2)
-        print("Genome Size: %s" % (filesize))
-        if filesize < 500:
-            ## Run optimized bowtie index prep
-            # print("Running optimized index prepration")
-            retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
-        else:
-            ## Genome is big, optimization under testing, so use normal bowtie index prep
-            # print("Running standard bowtie index prepration")
-            retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
+        retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
     
     if retcode == 0:## The bowtie mapping exit with status 0, all is well
         # print("Reference index prepared sucessfully")
@@ -610,10 +551,22 @@ def indexBuilder(reference):
         sys.exit()
     #####################################
 
-    ### Make a memory ###################
+    ### Make a memory file ###################
     fh_out      = open(memFile,'w')
+    print("Generating MD5 hash for reference")
     refHash     = (hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()) ### reference hash used instead of cleaned FASTA because while comparing only the user input reference is available
-    indexHash   = (hashlib.md5(open('%s.1.ebwt' % (genoIndex),'rb').read()).hexdigest())
+    
+    print("Generating MD5 hash for Bowtie index")
+    if os.path.isfile("%s.1.ebwtl" % (index)):
+        indexHash   = (hashlib.md5(open('%s.1.ebwtl' % (genoIndex),'rb').read()).hexdigest())
+    elif os.path.isfile("%s.1.ebwt" % (genoIndex)):
+        indexHash   = (hashlib.md5(open('%s.1.ebwt' % (genoIndex),'rb').read()).hexdigest())
+    else:
+        print("File extension for index couldn't be determined properly")
+        print("It could be an issue from Bowtie")
+        print("This needs to be reported to 'PHASwroks' developer - Script will exit")
+        sys.exit()
+
     print("\n@genomehash:%s | @indexhash:%s" % (refHash, indexHash) )
     fh_out.write("@timestamp:%s\n" % (datetime.datetime.now().strftime("%m_%d_%H_%M")))
     fh_out.write("@genomehash:%s\n" % (refHash))
@@ -625,6 +578,35 @@ def indexBuilder(reference):
     # sys.exit()
     
     return genoIndex
+
+def indexIntegrityCheck(index):
+    '''
+    Checks the integrity of index and the extension
+    '''
+    indexFolder     = index.rpartition("/")[0]
+    # print("This is the folder from earlier run:%s" % (indexFolder))
+    if os.path.isfile("%s.1.ebwtl" % (index)): ## Check if this extension exists in folder
+        indexExt    = "ebwtl"
+        indexFiles  = [i for i in os.listdir('%s' % (indexFolder)) if i.endswith('.ebwtl')]
+        if len(indexFiles) >= 6:
+            # print("Index has all six parts")
+            indexIntegrity = True
+
+    elif os.path.isfile("%s.1.ebwt" % (index)):
+        indexExt    = "ebwt"
+        indexFiles  = [i for i in os.listdir('%s' % (indexFolder)) if i.endswith('.ebwt')]
+        if len(indexFiles) >= 6:
+            # print("Index has all six parts")
+            indexIntegrity = True
+    else:
+        print("Existing index extension couldn't be determined")
+        print("Genome index will be remade")
+        indexIntegrity = False
+
+    print("Ancillary data integrity         :",indexIntegrity)
+    # print("Number of files:%s" % (len(indexFiles)))
+
+    return indexIntegrity,indexExt
 
 def FASTAClean(filename,mode):
     
@@ -710,7 +692,7 @@ def readMem(memFile):
     '''
     Reads memory file and gives global variables
     '''
-    print ("#### Fn: memReader #########################")
+    print ("#### Fn: memReader ############################")
     fh_in   = open(memFile,'r')
     memRead = fh_in.readlines()
     fh_in.close()
@@ -728,29 +710,52 @@ def readMem(memFile):
                 if param == '@genomehash':
                     global existRefHash
                     existRefHash = str(value)
-                    print('Existing reference hash:              ',existRefHash)
+                    print('Existing reference hash          :',existRefHash)
 
                 elif param == '@indexhash':
                     global existIndexHash
                     existIndexHash = str(value)
-                    print('Existing index hash:                  ',existIndexHash)
+                    print('Existing index hash              :',existIndexHash)
 
                 elif param == '@index':
                     global index
                     index = str(value)
-                    print('Existing index location:               ',index)
+                    print('Existing index location          :',index)
                 
                 else:
                     pass
 
     return None
 
+def coreReserve(cores):
+    '''
+    Decides the core pool for machine - written to make PHASworks comaptible with machines that 
+    have less than 10 cores - Will be improved in future
+    '''
+
+    if cores == 0:
+        ## Automatic assignment of cores selected
+        totalcores = int(multiprocessing.cpu_count())
+        if totalcores   == 4: ## For quad core system
+            nproc = 3
+        elif totalcores == 6: ## For hexa core system
+            nproc = 5
+        elif totalcores > 6 and totalcores <= 10: ## For octa core system and those with less than 10 cores
+            nproc = 7
+        else:
+            nproc = int(totalcores*0.9)
+    else:
+        ## Reserve user specifed cores
+        nproc = int(cores)
+
+    return nproc
+
 #### DE-DUPLICATOR MODULES ####
 def dedup_process(alib):
     '''
     To parallelize the process
     '''
-    print("\n#### Fn: De-duplicater ###############")
+    print("\n#### Fn: De-duplicater #######################")
 
     afastaL     = dedup_fastatolist(alib)         ## Read
     acounter    = deduplicate(afastaL )            ## De-duplicate
@@ -856,9 +861,10 @@ def main(libs):
             fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
         
         else:
+            print("Generating MD5 hash for current reference file")
             currentRefHash = hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()
             readMem(memFile)
-            print('Current reference hash:               ',currentRefHash)
+            print('Current reference hash           :',currentRefHash)
             
             #### Test #######
             # if os.path.isdir(index.rpartition('/')[0]):
@@ -871,13 +877,14 @@ def main(libs):
             # sys.exit()
 
             if currentRefHash == existRefHash:
-                print("Existing index matches the specified reference")
-                if os.path.isdir(index.rpartition('/')[0]):
-                    print("Index for matching reference found and will be used")
+                # print("Current reference file matches with the earlier run")
+                indexIntegrity,indexExt = indexIntegrityCheck(index)
+                if indexIntegrity:          ### os.path.isdir(index.rpartition('/')[0]):
+                    print("Index status                     : Re-use")
                     genoIndex = index
                     fh_run.write("Indexing Time: 0s\n")
                 else:
-                    print("Matching index could not be found and will be remade")
+                    print("Index status                     : Re-make")
                     tstart      = time.time()
                     genoIndex   = indexBuilder(reference)
                     tend        = time.time()
@@ -890,14 +897,14 @@ def main(libs):
                 fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
     else:        
         genoIndex = index
-        if not os.path.isfile("%s.1.ebwt" % (genoIndex)):
+        if not (os.path.isfile("%s.1.ebwt" % (genoIndex)) or os.path.isfile("%s.1.ebwtl" % (genoIndex))) :
             print("** %s - User specified index not found" % (genoIndex))
             print("** Please check the value for @index parameter in settings file")
             print("** Is it in specified directory? Did you input wrong name?")
             print("** Script will exit for now\n")
             sys.exit()
         else:
-            print("User specified genoIndex located and will be used")
+            print("Index status                     : User specified")
             fh_run.write("Indexing Time: 0s\n")
             pass
 
@@ -917,7 +924,7 @@ def main(libs):
         firstline   = fh_in.readline()
         if not firstline.startswith('>') and len(firstline.split('\t')) > 1:
             print("** File doesn't seems to be in FASTA format")
-            print("** Please provide correct setting for @libFormat in 'phaser.set' settings file")
+            print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
             sys.exit()
         else:
             print("#### Converting FASTA format to counts #######")
@@ -942,14 +949,14 @@ def main(libs):
         firstline = fh_in.readline()
         if firstline.startswith('>'):
             print("** File seems tobe in FASTA format")
-            print("** Please provide correct setting for @libFormat in 'phaser.set' settings file")
+            print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
             sys.exit()
         else:
             # print("File seems to be in correct format")
             pass
 
     else:
-        print("** Please provide correct setting for @libFormat in 'phaser.set' settings file")
+        print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
         print("** If sRNA data is in tag count format use 'T' and for FASTA format use 'F' ")
         sys.exit()
 
@@ -957,8 +964,8 @@ def main(libs):
     #### 3. Run Phaser ############################
     ###############################################
 
-    print('These are the libs: %s' % (libs))
-    rawInputs = inputList(libs,runType,genoIndex,deg,nthread,noiseLimit,hitsLimit)
+    # print('These are the libs: %s' % (libs))
+    rawInputs = inputList(libs,runType,genoIndex,deg,nthread,noiseLimit,hitsLimit,clustBuffer)
 
     # ### Test - Serial Mode
     # for aninput in rawInputs:
@@ -974,12 +981,8 @@ def main(libs):
 
 if __name__ == '__main__':
 
-    ###Processors to use####
-    if cores == 0 :## Use default 95% of processors as pool
-        nproc = int(multiprocessing.cpu_count()*0.91)
-    else:## As mannually entered by the user
-        nproc = int(cores)
-
+    #### Cores to use for analysis
+    nproc = coreReserve(cores)
     ###############
     checkUser()
     checkDependency()
@@ -990,7 +993,7 @@ if __name__ == '__main__':
     main(libs)    
     print('\n\n#### Phasing Analysis finished successfully')
     print("#### Results are in folder: %s" % (res_folder))
-    print("#### 'collapser' can be run by command: python3 collapser -dir %s\n" % (res_folder))
+    print("#### 'phasmerge' can be run by command: python3 phasmerge -dir %s\n" % (res_folder))
     sys.exit()
 
 ########### CHANGE LOG ########
@@ -1065,10 +1068,35 @@ if __name__ == '__main__':
 ## nthread parameter comes from optimize function and need not to be defines as a 
 #### static global variable
 
-## v1.02 -> v1.03
-## Added check for phasTER core
-## Added check for genome size before index prepration, and select normal or optimized index prepration approach
+## v1.02 -> v1.03 [major]
+## Added IF-loop to catch if index is an *.ebwtl (for big genomes) file before computing its hash
+## Added an index integrity checker function to ensure that index file with all six parts exists
+## Added a new function "coreReserve" for better assignment of cores for quad, hexa and octacore machines
+## "phaser" renamed to "phasdetect"
+## Added mindepth, clustbuffer, mismat parameters to phasworks.set for user tunability
+## Default setting hardcoded if mindepth, clustbuffer, mismat left empty by users
 
 ## TO-DO
 ## Add automatic index resolution
 ## Add functionality to share library folder, for 21-,24- and 22nt analysis
+
+
+## Core-scripts usage
+# Mandatory:
+#     -i        small RNA input file name
+#     -f        two file formats are supported,[t] for tagcount, [f] for fasta.
+#     -d        indexed genome by bowtie, indicating the prefix of the genome
+#     -px       prefix for each of the file, used to distinguish for eachother
+#     -rl       register len(rl), such as 21 or 24, separated by comma: 21,24 etc
+# optional:
+#     -k        bowtie alignment hits report, default = all
+#     -q        degradome or PARE data in ONLY tagcount format: seq   abundance
+#     -m        mismatches for both the sRNA and PARE/degradome alignment by bowtie, default = 0
+#     -p        p-value in decimal number, defult = 0.005;
+#     -cpu      cpu numbers for the bowtie alignment
+#     -n        noise, default = 1, for those which have abundance less equal than 1, properly increase
+#               noise value for union dataset 
+#     -g        gap between two separate cluster, 300bp by default
+#     -t        minimal proportation of the interested register small RNA abundance, default = 85
+#     -ht       the maximal average of hits for the small RNA of a certain cluster, defaut = 10
+
