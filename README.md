@@ -1,6 +1,6 @@
 ##PHASworks suite for phased clusters discovery, comparison, annotation and identify triggers
 
-version: rc3
+version: rc3    
 updated: 03/05/2017
 
 **PHASworks** is a parallelized suite for phased siRNAs clusters characterization. It has three user accessible components that enables discovery of phased siRNA loci from tens to hundreds of sRNA libraries, prepares summary of these loci containing library-specific abundances and other quality-filtering parameters and finally identifies miRNA triggers of these PHAS loci. The three **phasTER** components are:
