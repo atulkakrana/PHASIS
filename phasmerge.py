@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.23 02/28/17
+## Updated: version-1.24 03/11/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 
@@ -10,8 +10,8 @@
 ### non-redundant set of phased loci. Also uniq phased loci from each library.
 ### Contact: atulkakrana@gmail.com
 
-import os,glob,sys,difflib,time,shutil,argparse,math,sqlite3,operator
-import operator,datetime,subprocess,multiprocessing,re
+import os,glob,sys,difflib,time,shutil,argparse,math,operator
+import operator,datetime,subprocess,multiprocessing,re,getpass
 from multiprocessing import Process, Queue, Pool
 from operator import itemgetter
 from itertools import groupby
@@ -53,8 +53,8 @@ startbuff       = 0                                                 ## While ext
                                                                     ## for better matching with real loci
 
 maxTagRatioCut  = 0.65
-phasCyclesCut   = 8
-totalAbunCut    = 500
+phasCyclesCut   = 12
+totalAbunCut    = 320                                               ## Atleast 20 reads per position x 2 (strands) x 8 (pos) = 320
 
 
 #### ANNOTATION DEFAULTS ############
@@ -84,10 +84,14 @@ mergeflags.add_argument('-pval',  default='', type=str, help='pvalue cutoff to'\
     ' filter the phased siRNAs loci or transcipts. [Optional]', required=False)
 mergeflags.add_argument('-gtf',  default='', type=str, help='GTF file from genome'\
     ' annotation or transcriptome mapped to genome. GTF file must be formatted using'\
-    ' gffread utility [Optional]', required=False)
+    ' gffread (cufflinks) utility [Optional]. To convert your GFF or GTF file to '\
+    ' required format: gffread <my.gff3> -T -o <my.gtf>', required=False)
 mergeflags.add_argument('-safesearch',  default='T', type=str, help='Turning this ON'\
     ' filters weakly phased loci based on best k-value, maxtagratio and abundance'\
     ' T: For turned ON (default) | F: Turned OFF.[Optional]', required=False)
+mergeflags.add_argument('-debug',  default='T', type=str, help='Turning this ON'\
+    ' collects usage data from users directory and sends to the authors.'\
+    ' T: For turned ON | F: Turned OFF (default).[Optional]', required=False)
 
 compflags.add_argument('-dir2',  default='None', type=str, help='another directory from'\
     ' your phasmerge run, which need to be compared to first one. [Compulsory]', required=False)
@@ -101,13 +105,16 @@ if args.mode != "merge" and args.mode != "compare":
     parser.print_help()
     sys.exit()
 
-
 if args.mode == "merge":
     if args.dir == None:
         print("\nPlease specify directory from phasmerge analysis using the '-dir' parameter")
         print("To see all requred parameters, run: python3 phasmerge -h\n")
         parser.print_help()
         sys.exit()
+    elif args.gtf:
+        import sqlite3
+    else:
+        pass
 
 elif args.mode == "compare":
     if args.dir == None:
@@ -129,7 +136,6 @@ else:
     print("Check your input for '-mode' parameter ")
     parser.print_help()
     sys.exit()
-
 
 #### CLEANUPS
 if args.dir.endswith("/"): ## If user add "/" at end of path, this is removed
@@ -2340,11 +2346,70 @@ def compare_writer(resList):
 
     return outfile
 
+def usagedata():
+    '''
+    collects usage data for improments to script
+    '''
+
+    print("\n#### Fn: usagedata ###########################")
+    # Open a plain text file for reading.  For this example, assume that
+    # the text file contains only ASCII characters.
+
+    ### Header
+    auser           = getpass.getuser()
+    msg             = MIMEMultipart()
+    msg['Subject']  = "PHASworks | '%s' | runid - %s" % (auser,datetime.datetime.now().strftime("%m_%d_%H_%M"))
+    msg['From']     = "phasworks@gmail.com"
+    msg['To']       = "kakrana@udel.edu"
+    msg.preamble    = "Usage data for developer"
+
+    attachlist = ["phasworks.set","listdir.txt"]
+    if os.path.isfile(setFile):
+        pass
+    else:
+        print("---Settings file 'phasworks.set' not found in current directory")
+        print("---Please copy it to same directory as script and rerun")
+        sys.exit()
+
+    ### List of files
+    print("Attaching list of directory")
+    alist   = os.listdir(os.getcwd())
+    afile   = "listdir.txt"
+    fh_out  = open(afile,'w')
+    fh_out.write("\n\n$ls\n")
+    for i in alist:
+        fh_out.write("%s\n" % (i))
+    fh_out.close()
+
+    ### Attachements 
+    for afile in attachlist:
+        print("Attaching file:%s" % (afile))
+        with open(afile) as fp:
+            atext = MIMEText(fp.read())
+        msg.attach(atext)
+
+    ### Send 
+    # Send the message via our own SMTP server.
+    # print("Sending settings file")
+    s = smtplib.SMTP('localhost')
+    s.send_message(msg)
+    s.quit()
+
+    return None
+
 #### MAIN ###################
 #############################
 def main():
     
     checkDependency()
+    if args.debug == "T":
+        global smtplib
+        global MIMEText
+        global MIMEMultipart
+        import smtplib 
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        usagedata()
 
     if args.mode == "merge": ## Default mode
         ### Collapser #########################################
@@ -2539,16 +2604,6 @@ def main():
         
         resFile     = overlapChecker(resList,gtfList,pcutoff)
 
-
-
-
-
-
-
-
-
-
-
         ### Prepare for revFerno and cleanup unwanted files
         # shutil.copy("./%s" % (setFile), "./%s" % (res_folder))
         if cleanup == 1:
@@ -2723,7 +2778,14 @@ if __name__ == '__main__':
 ## Added dependency checks
 ## "Safe search" implemented, default cutoff are in developer settings area
 
-## To revert in public release
+## v1.23 -> v1.24
+## Collect usage data for impromenets to scripts and for better debugging of reported issues
+## Updated safesearch filters
+## Moved sqlite3 import to args.gtf 
+
+########################################
+## PUBLIC RELEASE
+## Turn OFF debug mode
 ## Revert overlapCutoff back to 0.25 - Done
 ## Merge ratio in self merge (originally 0.40) - Done
 
