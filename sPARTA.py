@@ -1,9 +1,8 @@
 ## sPARTA: small RNA-PARE Target Analyzer public version 
-## Updated: version-1.22 01/01/2017
+## Updated: version-1.23 11/03/2017
 ## Property of Meyers Lab at University of Delaware
 ## Author: kakrana@udel.edu
 ## Author: rkweku@udel.edu
-## Author: pupatel@udel.edu
 
 
 #### PYTHON FUNCTIONS ##############################
@@ -11,6 +10,7 @@ import sys,os,re,time,glob,shutil,operator,datetime,argparse,importlib
 import subprocess, multiprocessing
 from multiprocessing import Process, Queue, Pool
 from operator import itemgetter
+from os.path import expanduser
 
 
 #### USER SETTINGS ################################
@@ -241,15 +241,18 @@ def genomeReader(genomeFile):
     print("Caching genome fasta")
     genomeFile = fh_in.read()
     genomeList = genomeFile.split('>')[1:] 
-    chromoDict = {} 
+    chromoDict = {}
+    chromoLenDict = {}
     for i in genomeList:
         chromoInfo  = i.partition('\n') 
         chrid       = chromoInfo[0].split()[0] 
         chrSeq      = chromoInfo[2].replace("\n", "")
-        chromoDict[chrid] = [chrSeq]
+        chromoDict[chrid]       = [chrSeq]
+        chromoLenDict[chrid]    = int(len(chrSeq)) - 1 ## To convert coords to python format
 
     print("Genome dict prepared for %s chromosome/scaffolds" % (len(chromoDict)))
-    return chromoDict
+    
+    return chromoDict,chromoLenDict
 
 def gtfParser(gtfFile):
 
@@ -426,7 +429,7 @@ def gffParser(gffFile):
     fh_in.close()
     return genome_info,genome_info_inter
 
-def extractFeatures(genomeFile,chromoDict,genome_info,genome_info_inter):
+def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_inter):
     '''
     extract coordinates of genes and intergenic regions 
     '''
@@ -437,6 +440,8 @@ def extractFeatures(genomeFile,chromoDict,genome_info,genome_info_inter):
         gene1       = (genome_info[i])
         gene2       = (genome_info[i+1])
         gene_type   = 'inter' #
+        achr        = gene1[0]
+        bchr        = gene2[0]
         # print(gene1,gene2)
         
         if gene1[3] == gene2[3] and gene1[4] == gene2[4]:
@@ -455,32 +460,27 @@ def extractFeatures(genomeFile,chromoDict,genome_info,genome_info_inter):
                     inter_end2      = int(gene2[3])-1 ## Till start of second gene
                     
                     if gene1[1]     == 'w': ##The gene is on positive strand so upstream
-                        inter_name1 = ('%s_up' % (gene1[2]))
-                        inter_name2 = ('%s_up' % gene2[2])
+                        inter_name1 = ('%s_up'      % (gene1[2]))
+                        inter_name2 = ('%s_up'      % (gene2[2]))
                     else: ##Its on negative strand
-                        inter_name1 = ('%s_down' % (gene1[2]))
-                        inter_name2 = ('%s_up' % gene1[2])
+                        inter_name1 = ('%s_down'    % (gene1[2]))
+                        inter_name2 = ('%s_up'      % (gene1[2]))
 
                     genome_info_inter.append((gene1[0],gene1[1],inter_name1,inter_start1,inter_end1,gene_type))
                     genome_info_inter.append((gene2[0],gene2[1],inter_name2,inter_start2,inter_end2,gene_type))
 
                 ## If the first two genes are not from same strand i.e. there is only one gene on this chromosme and strand
                 else: ## Intergenic from end of chromosome/scaffold
-                    inter_start2 = int(gene1[4])+1##From end of first gene of chromosome
-                    inter_end2 = '-' ### Till end of chromosome
+                    inter_start2    = int(gene1[4])+1 ## From end of first gene of chromosome
+                    # inter_end2      = '-' ### Till end of chromosome
+                    inter_end2      = int(chromoLenDict[achr]) ## Till end of chromosome
                     
                     if gene1[1] == 'w': ##The gene is on positive strand so upstream
-                        inter_name1 = ('%s_up' % (gene1[2]))
-                        inter_name2 = ('%s_down' % gene1[2])
+                        inter_name1 = ('%s_up'      % (gene1[2]))
+                        inter_name2 = ('%s_down'    % (gene1[2]))
                     else: ##Its on negative strand
-                        inter_name1 = ('%s_down' % (gene1[2]))
-                        inter_name2 = ('%s_up' % gene1[2])
-                    #if inter_name1 == inter_name2:
-                    
-                    #print ('\nLoop2 - First gene on this chromosme and strand but also the only one')
-                    #print (gene1[0],gene1[1],inter_name1,inter_start1,inter_end1,gene_type)
-                    #print (gene1[0],gene1[1],inter_name2,inter_start2,inter_end2,gene_type)
-                    
+                        inter_name1 = ('%s_down'    % (gene1[2]))
+                        inter_name2 = ('%s_up'      % (gene1[2]))                    
                     
                     genome_info_inter.append((gene1[0],gene1[1],inter_name1,inter_start1,inter_end1,gene_type))
                     genome_info_inter.append((gene1[0],gene1[1],inter_name2,inter_start2,inter_end2,gene_type))
@@ -488,16 +488,19 @@ def extractFeatures(genomeFile,chromoDict,genome_info,genome_info_inter):
             else:
                 if gene1[0] == gene2[0] and gene1[1] == gene2[1]: ### If chr_id and strands are equal than find intergenic.
                     inter_start = int(gene1[4])+1#
-                    inter_end = int(gene2[3])-1 #
+                    inter_end   = int(gene2[3])-1 #
                     if gene2[1] == 'w': #
                         inter_name = ('%s_up' % (gene2[2]))
-                    else:## reverse strand
+                    else:
+                        ## reverse strand
                         inter_name = ('%s_up' % (gene1[2]))
                     genome_info_inter.append((gene2[0],gene2[1],inter_name,inter_start,inter_end,gene_type))
                 
                 else: #
                     inter_start = int(gene1[4])+1#
-                    inter_end = '-' ## Different from MPPP as no table ro query for end of chromosome in public version
+                    # inter_end   = '-' ## Different from MPPP as no table ro query for end of chromosome in public version
+                    inter_end2  = int(chromoLenDict[achr]) ## Till end of chromosome
+                    
                     if gene1[1] == 'w':
                         inter_name = ('%s_down' % (gene1[2]))
                     else: 
@@ -562,6 +565,10 @@ def extractFeatures(genomeFile,chromoDict,genome_info,genome_info_inter):
                 elif int(ent[4])-int(ent[3]) > 25:
                     coords.append(ent[0:])
                     coords_out.write('%s,%s,%s,%s,%s,%s\n' % (ent[0:]))
+
+                else:
+                    ## Too short to use for analysis
+                    pass
     
     print ("Number of coords in 'coords' list: %s" % (len(coords)))
 
@@ -842,60 +849,6 @@ def miRinput():
     #    print (i)
         
     return mirL ## miRs holds the list of miRNA name and query where as miRtable holds flag -table name or local
-
-## Deprecated - Apr-1 [Retained for backward compatibility]
-def tarFind3(frag):
-
-    file_out = './predicted/%s.targ' % (frag.rpartition('.')[0]) ## 
-
-    ##
-    index = "./index/%s_index" % (frag) #
-    if args.indexStep:
-        print('**Creating index of cDNA/genomic sequences:%s\n**' % (index))
-        retcode = subprocess.call(["bowtie2-build", frag, index])
-
-    else: #
-        if os.path.isfile('%s.1.bt2' % index): #
-            retcode = 0
-            print('**Found index of cDNA/genomic sequences:%s\n**' % (index))
-        else:
-            print('**Could not find index of cDNA/genomic sequences:%s\n**' % (index))
-            sys.exit()
-
-    if retcode == 0: #
-        print ('Predicting targets for frag:%s using index:%s' % (frag,index))
-        nspread2 = str(nspread)
-        if args.tarPred == 'H': ## 
-            intervalFunc = str("L,4,0.1")
-            minScoreFunc = str("L,-24,-0.5")
-            readGap = str("22,14")
-            refGap = str("8,14")
-            retcode2 = subprocess.call(["bowtie2","-a","--end-to-end","-D 3","-R 2","-N 1","-L 8","-i",intervalFunc,"--rdg",readGap,"--rfg",refGap,"--min-score",minScoreFunc,"--norc","--no-unal","--no-hd","-p",nspread2, "-x", index, "-f" ,"miRinput_RevComp.fa","-S", file_out])
-        elif args.tarPred == 'E': #
-            print ("You chose 'Exhaustive mode' for target identification - Please be patient")
-            intervalFunc = str("L,2,0.1")
-            minScoreFunc = str("L,-24,-0.5")
-            readGap = str("22,14")
-            refGap = str("8,14")
-            #### Jan 13 -D 7 -> -D 4 |
-            retcode2 = subprocess.call(["bowtie2","-a","--end-to-end","-D 4","-R 2","-N 1","-L 6","-i",intervalFunc,"--rdg",readGap,"--rfg",refGap,"--min-score",minScoreFunc,"--norc","--no-unal","--no-hd","-p",nspread2, "-x", index, "-f","miRinput_RevComp.fa","-S", file_out])
-
-        else:
-            print ('''\nPlease choose correct target prediction mode - Heuristic (H) or Exhaustive (E)\n
-                   System will exit now''')
-            sys.exit()
-    else:
-        print("\n\nWARNING: Something wrong happened while generating or locating index files\n")
-        print("Script will exit for now\n")
-        sys.exit()
-
-
-    if retcode2 == 0:#
-        print('\n miRNAs mapped to Fragment: %s' % (frag))
-    else:
-        print ("There is some problem with miRNA mapping '%s' to cDNA/genomic seq index" % (frag))
-        print ("Script exiting.......")
-        sys.exit()
 
 ## New version added - Apr1/15
 def tarFind4(frag):
@@ -1528,7 +1481,9 @@ def readFile(filename):
         Variable wholeFile containing the entire file
 
     """
-
+    # home            = expanduser("~")
+    # cwd             = os.getcwd()
+    # print ("$HOME:%s | CWD:%s" % (home,cwd))
     f = open(filename, 'r')
     wholeFile = f.readlines()
     f.close()
@@ -1711,11 +1666,11 @@ def validatedTargetsFinder(PAGeDict):
                 toAppend.append(str(windowSum))
                 # Add ratio of abundance of cleavage site to sum within 5 bp 
                 # of the cleavage site in each direction
-                toAppend.append(str("%.6f" % float(int(cleavageSite[0])/windowSum)))
+                toAppend.append(str("%f" % float(int(cleavageSite[0])/windowSum)))
                 # Add category at cleavage site
                 toAppend.append(str(categoryScore))
                 # Append the p-value to the toAppend list
-                toAppend.append(str("%.6f" % pValue))
+                toAppend.append(str("%f" % pValue))
                 validatedTargets.append(toAppend)
     
     return(validatedTargets)
@@ -2062,7 +2017,7 @@ def writeValidatedTargetsFile(header, validatedTargets, outputFile):
     
     #
     for i in range(len(validatedTargets)):
-        validatedTargets[i].append("%.6f" % (float(validatedTargets[i][pValueIndex])/float(validatedTargets[i][windowRatioIndex])))
+        validatedTargets[i].append("%.4f" % (float(validatedTargets[i][pValueIndex])/float(validatedTargets[i][windowRatioIndex])))
 
     #
     correctedPValueIndex = len(validatedTargets[0]) - 1
@@ -2077,6 +2032,9 @@ def writeValidatedTargetsFile(header, validatedTargets, outputFile):
     # >= .25 for a tag to be considered
     if(args.noiseFilter):
         for target in validatedTargets:
+            target[windowRatioIndex] = '%.3f' % float(target[windowRatioIndex])
+            target[correctedPValueIndex] = '%.4f' % float(
+                target[correctedPValueIndex])
             # Include any target with pvalue <= .25 and with window ratio
             # >= .25
             if((float(target[correctedPValueIndex]) <= .25) and (float(target[
@@ -2186,7 +2144,7 @@ def genomicCoord(ent): ####
     cleave_site = int(ent[8])
     
     ## Reverse map co-ordinates ##########################################################
-    print ('**Reverse mapping of Co-ordinates will be performed**')
+    # print ('**Reverse mapping of Co-ordinates will be performed**')
     if gene_name in coord_dict_wat:
         print ('Entry: %s in positive strand: %s' % (ent[0:4],coord_dict_wat[gene_name]))
         geno_start = coord_dict_wat[gene_name][1]###Use for reverse mapping of postive genes
@@ -2297,18 +2255,19 @@ def ReverseMapping():
         ##################
         print("Step 4/4: Reverse mapping using coords dict and targets list")
         
-        # ## # TEST- SINGLE CORE - For troubleshooting ----##
-        # print('\n***Entering genomicCoord- Serial***\n')
-        # ValidTarGeno = []
-        # for i in ScoInpExt:
-        #     print("\nEntry for reverse mapping:%s" % (i))
-        #     z = genomicCoord(i)
-        #     ValidTarGeno.append(z)
+        ## # TEST- SINGLE CORE - For troubleshooting ----##
+        print('\n***Entering genomicCoord- Serial***\n')
+        ValidTarGeno = []
+        for i in ScoInpExt:
+            print("PARE lib:",afile)
+            print("\nEntry for reverse mapping:%s" % (i))
+            z = genomicCoord(i)
+            ValidTarGeno.append(z)
         
         ## NORMAL- PARALLEL MODE - Comment test above for normal use  
-        print('\n***Entering genomicCoord - parallel***\n')
-        print('**Reverse mapping initiated**\n\n')
-        ValidTarGeno = PPResults(genomicCoord, ScoInpExt) ## Results are in form of list
+        # print('\n***Entering genomicCoord - parallel***\n')
+        # print('**Reverse mapping initiated**\n\n')
+        # ValidTarGeno = PPResults(genomicCoord, ScoInpExt) ## Results are in form of list
         
         print ('Reverse mapping complete for:%s\n\n\n' % (afile))
         print("Step 4/4: Done!!\n\n")
@@ -2341,6 +2300,117 @@ def ReverseMapping():
     
     ### END OF REVERSE MAP ##########
 
+def dedup_process(alib):
+    '''
+    To parallelize the process
+    '''
+    print("\n#### Fn: De-duplicater #######################")
+
+    afastaL     = dedup_fastatolist(alib)         ## Read
+    acounter    = deduplicate(afastaL )            ## De-duplicate
+    countFile   = dedup_writer(acounter,alib)   ## Write
+
+    return countFile
+
+def dedup_fastatolist(alib):
+    '''
+    New FASTA reader
+    '''
+
+    ### Sanity check
+    try:
+        f = open(alib,'r')
+    except IOError:                    
+        print ("The file, %s, does not exist" % (alib))
+        return None
+
+
+    ## Output 
+    fastaL      = [] ## List that holds FASTA tags
+
+    print("Reading FASTA file:%s" % (alib))
+    read_start  = time.time()
+    
+    acount      = 0
+    empty_count = 0
+    for line in f:
+        if line.startswith('>'):
+            seq = ''
+            pass
+        else:
+          seq = line.rstrip('\n')
+          fastaL.append(seq)
+          acount += 1
+
+    read_end    = time.time()
+    # print("-- Read time: %ss" % (str(round(read_end-read_start,2))))
+    print("Cached file: %s | Tags: %s | Empty headers: %ss" % (alib,acount,empty_count)) 
+
+    return fastaL
+                   
+def deduplicate(afastaL):
+    '''
+    De-duplicates tags using multiple threads and libraries using multiple cores
+    '''
+    dedup_start  = time.time()
+
+    # deList = [] ## Hold deduplicated tags and their abudnaces in a tuple
+
+    acounter    = collections.Counter(afastaL)
+
+    dedup_end  = time.time()
+    # print("-- dedup time: %ss" % (str(round(dedup_end-dedup_start,2))))
+
+    return acounter 
+
+def dedup_writer(acounter,alib):
+    '''
+    writes rtag count to a file
+    '''
+
+    print("Writing counts file for %s" % (alib))
+    countFile   = "%s.fas" % alib.rpartition('.')[0]  ### Writing in de-duplicated FASTA format as required for phaster-core
+    fh_out       = open(countFile,'w')
+
+    acount      = 0
+    seqcount    = 1 ## TO name seqeunces
+    for i,j in acounter.items():
+        # fh_out.write("%s\t%s\n" % (i,j))
+        fh_out.write(">seq_%s|%s\n%s\n" % (seqcount,j,i))
+        acount      += 1
+        seqcount    += 1
+
+    print("Total unique entries written for %s: %s" % (alib,acount))
+
+    fh_out.close()
+
+    return countFile
+
+def coreReserve(cores):
+    '''
+    Decides the core pool for machine - written to make PHASworks comaptible with machines that 
+    have less than 10 cores - Will be improved in future - Used as is from phasdetect (PHASworks)
+    '''
+
+    # if cores == 0:
+    if cores == "Y":
+        ## Automatic assignment of cores selected
+        totalcores = int(multiprocessing.cpu_count())
+        if totalcores   == 4: ## For quad core system
+            nproc = 3
+        elif totalcores == 6: ## For hexa core system
+            nproc = 5
+        elif totalcores > 6 and totalcores <= 10: ## For octa core system and those with less than 10 cores
+            nproc = 7
+        else:
+            nproc = int(totalcores*0.85)
+    else:
+        ## Reserve user specifed cores
+        nproc = int(cores)
+
+    return nproc
+
+
 ##############################################################################################
 #### MAIN FUNCTION ###########################################################################
 def main():
@@ -2358,14 +2428,14 @@ def main():
 
 
     if args.generateFasta:
-        chromoDict                      = genomeReader(args.genomeFile)
+        chromoDict,chromoLenDict          = genomeReader(args.genomeFile)
         # If the annotatyion type is a GFF file, run the GFF parser
         if(args.annoType == 'GFF'):
             genome_info,genome_info_inter = gffParser(args.annoFile)
         # If the annotatyion type is a GTF file, run the GTF parser
         elif(args.annoType == 'GTF'):
             genome_info,genome_info_inter = gtfParser(args.annoFile) 
-        coords                          = extractFeatures(args.genomeFile,chromoDict,genome_info,genome_info_inter) ## Extracts Coords from GFF3
+        coords                            = extractFeatures(args.genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_inter) ## Extracts Coords from GFF3
         fastaOut,fastaList              = getFASTA1(args.genomeFile,coords,chromoDict) ##Creates FASTA file
         unambiguousBaseCounter(fastaOut, args.minTagLen)
         print('This is the extracted file: %s' % (fastaOut))
@@ -2480,11 +2550,59 @@ def main():
     
     ## PARE PROCESS AND MAP #################
     PAREStart = time.time()
+
+    ## Deduplicatiom ########################
+    ## Needs to be integrated and tag2FASTA will be done in this loop i.e. a collapsed FASTA file written with de-duplicated
+    ## file or even if tag-count is upplied - Check how switches will work together
+    # if libFormat    == "F":
+    #     ### Convert FASTA to Tagcount
+    #     ### Sanity check
+    #     fh_in       = open(libs[0],'r')
+    #     firstline   = fh_in.readline()
+    #     if not firstline.startswith('>') and len(firstline.split('\t')) > 1:
+    #         print("** File doesn't seems to be in FASTA format")
+    #         print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
+    #         sys.exit()
+    #     else:
+    #         print("#### Converting FASTA format to counts #######")
+    #         dedup_start     = time.time()
+            
+    #         ## TEST
+    #         # newList = []
+    #         # for alib in libs:
+    #         #     aname = dedup_process(alib)
+    #         #     newList.append(aname)
+    #         # libs = newList
+
+    #         libs            = PPResults(dedup_process,libs)
+    #         # print('Converted libs: %s' % (libs))
+    #         dedup_end       = time.time()
+    #         fh_run.write("FASTA conversion time:%ss\n" % (round(dedup_end-dedup_start,2)))
+        
+    # elif libFormat  == "T": 
+    #     ### Can be used as-is, check if it is really 
+    #     ### Sanity check
+    #     fh_in = open(libs[0],'r')
+    #     firstline = fh_in.readline()
+    #     if firstline.startswith('>'):
+    #         print("** File seems tobe in FASTA format")
+    #         print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
+    #         sys.exit()
+    #     else:
+    #         # print("File seems to be in correct format")
+    #         pass
+
+    # else:
+    #     print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
+    #     print("** If sRNA data is in tag count format use 'T' and for FASTA format use 'F' ")
+    #     sys.exit()
     
     if args.tag2FASTA:
         shutil.rmtree('./PARE',ignore_errors=True)
         os.mkdir('./PARE')
         PP(tag2FASTA2,args.libs)
+
+    ###########################################
     
     indexFls = [file for file in os.listdir('./index') if file.endswith ('index.1.bt2')]
     print ('These are index files: ',indexFls)
@@ -2621,10 +2739,11 @@ def main():
 
 if __name__ == '__main__':
     nspread = 6
-    if args.accel == 'Y':
-        args.accel = int(multiprocessing.cpu_count()*0.85)
-    else:
-        args.accel = int(args.accel)
+    args.accel = coreReserve(args.accel)
+    # if args.accel == 'Y':
+    #     args.accel = int(multiprocessing.cpu_count()*0.85)
+    # else:
+    #     args.accel = int(args.accel)
 
     
     start = time.time()
@@ -2716,17 +2835,24 @@ if __name__ == '__main__':
 #### function for crick strand genomic start site was beng used instead of genomic end to compute 
 #### new coordinates - Fixed by replacing geno_end    = coord_dict_crick[gene_name][1] with
 #### geno_end    = coord_dict_crick[gene_name][2] -  see the difference in coordinates
+## Fixed precision bug, which was introduced in v1.21 - fixed by Reza
+## Added GTF comaptibility, to make it comaptible with cufflinks experiments
 
-## v1.22 - v1.23[planned]
-## Optimization in Reza's part to improve speed
-## Add chart function
+## v1.22 -> v1.23 [Atul]
+## Improved reverse mapping. If coords includes chromosome end i.e. '-' as end coordinate then revese mapping 
+#### generated an error. Now, a dict of chromo lengths "chromoLenDict" is used to fetch chromosome ends
+## Added a module to slightly better assign the cores - Used from PHAS detect
+## Added a de-duplicator to sPARTA - No need to run tally - This needs to be integrated to sPARTA
+
+
+
 
 ## FUTURE DEVELOPMENT [Pending]
-## Added GTF comaptibility, to make it comaptible with cufflinks experiments
-## Remove rpy2 depenency
+## Add file checks
 ## Fine tune paralleization in validation part
 ## Add degradome plots
 ## Add funtionality to include probabilty of accesibilty and RNA-RNA duplex formation, combine this -value with PARE based p-value
 ## fasta file is read once to fastaList. What does the 'unambiguousBaseCounter' function does with FASTA file? Can we use the fastaList to avoid file reading again?
-## Fragmented file names changed with extra 'frag' how does it affects Reza functions?
 ## Which switches to use to not perform reverse mapping if feature file is supplied? Rename final uniq file to include 'revammpped' consitant with library specific files. 
+## Optimization in Reza's part to improve speed
+## Add chart function

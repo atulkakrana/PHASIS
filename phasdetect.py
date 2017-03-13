@@ -601,7 +601,8 @@ def indexIntegrityCheck(index):
     else:
         print("Existing index extension couldn't be determined")
         print("Genome index will be remade")
-        indexIntegrity = False
+        indexExt        = False
+        indexIntegrity  = False
 
     print("Ancillary data integrity         :",indexIntegrity)
     # print("Number of files:%s" % (len(indexFiles)))
@@ -1075,6 +1076,7 @@ if __name__ == '__main__':
 ## "phaser" renamed to "phasdetect"
 ## Added mindepth, clustbuffer, mismat parameters to phasworks.set for user tunability
 ## Default setting hardcoded if mindepth, clustbuffer, mismat left empty by users
+## Index extension to the indexIntegrity loop when no index is found, else it was giving error at return step
 
 ## TO-DO
 ## Add automatic index resolution
