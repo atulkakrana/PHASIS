@@ -1,4 +1,4 @@
-##*PHASworks* suite for phased clusters discovery, comparison, annotation and to identify miRNA triggers
+## *PHASworks* suite for phased clusters discovery, comparison, annotation and to identify miRNA triggers
 
 version: release candidate v3    
 updated: 03/05/2017    
