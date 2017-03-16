@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.24 03/11/17
+## Updated: version-1.25 03/16/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 
@@ -53,7 +53,7 @@ startbuff       = 0                                                 ## While ext
                                                                     ## for better matching with real loci
 
 maxTagRatioCut  = 0.65
-phasCyclesCut   = 12
+phasCyclesCut   = 10
 totalAbunCut    = 320                                               ## Atleast 20 reads per position x 2 (strands) x 8 (pos) = 320
 
 
@@ -1308,6 +1308,9 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
         sizeRatio   = ent[1][-1][4]
         phasiList   = ent[1][0:-1]
         phasinfo    = ent[2] ### The PHAs coordinates from phaser
+        phastart    = int(phasinfo[3])
+        phasend     = int(phasinfo[4])
+        phaslen     = phasend-phastart
         # print("phasinfo:",phasinfo)
         # sys.exit()
         # print("%s | phasCycles:%s | phasSig:%s" % (phasID,phasCycles,phasSig))
@@ -1400,7 +1403,7 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
             if args.safesearch == "T":
                 ## Apply filters
                 # print("Total Abudnace:",totalAbun)
-                if (float(maxTagRatio) <= maxTagRatioCut) and (int(phasCycles) >= phasCyclesCut) and (totalAbun >= totalAbunCut): ##  
+                if (float(maxTagRatio) <= maxTagRatioCut) and (int(phasCycles) >= phasCyclesCut) and (totalAbun >= totalAbunCut) and (phaslen >= phase*6): ##  
                     fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo[:-1]),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2,phasinfo[-1]))
                 else:
                     ## Bad Quality prediction - Skip
@@ -2372,7 +2375,7 @@ def usagedata():
         sys.exit()
 
     ### List of files
-    print("Attaching list of directory")
+    # print("Attaching list of directory")
     alist   = os.listdir(os.getcwd())
     afile   = "listdir.txt"
     fh_out  = open(afile,'w')
@@ -2383,7 +2386,7 @@ def usagedata():
 
     ### Attachements 
     for afile in attachlist:
-        print("Attaching file:%s" % (afile))
+        # print("Attaching file:%s" % (afile))
         with open(afile) as fp:
             atext = MIMEText(fp.read())
         msg.attach(atext)
@@ -2588,21 +2591,22 @@ def main():
         ##################
         #### ANNOTATE ####
 
-        #### Parse GTF ###
-        featureFile     = args.gtf
-        if annomode     == 1:   ## PASA GTF for overlapping transcripts
-            gtfList     = gtfParser(featureFile)
-        elif annomode   == 2 or annomode == 3 or annomode == 5 or annomode == 6: ## Trinity or Rocket GTF for overlapping transcipts
-            gtfList     = gtfParser2(featureFile)
-        elif annomode   == 4: ## Trinity and Rocket both for overlapping transcipts
-            gtfList1    = gtfParser2(featureFile)  ## Both lists can be identified with aflag feature
-            gtfList2    = gtfParser2(featureFile2) ## Both lists can be identified with aflag feature
-            gtfList     = gtfList1 + gtfList2
-        else:
-            print("Please input correct mode in user settings - script will exit now")
-            sys.exit()
-        
-        resFile     = overlapChecker(resList,gtfList,pcutoff)
+        if args.gtf:
+            #### Parse GTF ###
+            featureFile     = args.gtf
+            if annomode     == 1:   ## PASA GTF for overlapping transcripts
+                gtfList     = gtfParser(featureFile)
+            elif annomode   == 2 or annomode == 3 or annomode == 5 or annomode == 6: ## Trinity or Rocket GTF for overlapping transcipts
+                gtfList     = gtfParser2(featureFile)
+            elif annomode   == 4: ## Trinity and Rocket both for overlapping transcipts
+                gtfList1    = gtfParser2(featureFile)  ## Both lists can be identified with aflag feature
+                gtfList2    = gtfParser2(featureFile2) ## Both lists can be identified with aflag feature
+                gtfList     = gtfList1 + gtfList2
+            else:
+                print("Please input correct mode in user settings - script will exit now")
+                sys.exit()
+            
+            resFile     = overlapChecker(resList,gtfList,pcutoff)
 
         ### Prepare for revFerno and cleanup unwanted files
         # shutil.copy("./%s" % (setFile), "./%s" % (res_folder))
@@ -2781,7 +2785,17 @@ if __name__ == '__main__':
 ## v1.23 -> v1.24
 ## Collect usage data for impromenets to scripts and for better debugging of reported issues
 ## Updated safesearch filters
-## Moved sqlite3 import to args.gtf 
+## Moved sqlite3 import to args.gtf
+
+## v1.24 -> v1.25 [stable]
+## Fixed - Annotate functions being called even without a GTF file
+## Reduced continuous phase positions cutoff to 10, and added phaslen filter to safesearch
+## Closed a few print statements
+
+#### TURN ON PARALLEL LIBRARY CACHING  - readFileToDict function
+
+
+
 
 ########################################
 ## PUBLIC RELEASE
