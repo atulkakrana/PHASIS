@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.03 02/24/17 
+## Updated: version-v1.04 03/17/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
@@ -994,7 +994,7 @@ if __name__ == '__main__':
     main(libs)    
     print('\n\n#### Phasing Analysis finished successfully')
     print("#### Results are in folder: %s" % (res_folder))
-    print("#### 'phasmerge' can be run by command: python3 phasmerge -dir %s\n" % (res_folder))
+    print("#### 'phasmerge' can be run by command: python3 phasmerge -mode merge -dir %s\n" % (res_folder))
     sys.exit()
 
 ########### CHANGE LOG ########
@@ -1077,6 +1077,10 @@ if __name__ == '__main__':
 ## Added mindepth, clustbuffer, mismat parameters to phasworks.set for user tunability
 ## Default setting hardcoded if mindepth, clustbuffer, mismat left empty by users
 ## Index extension to the indexIntegrity loop when no index is found, else it was giving error at return step
+
+## v1.03 -> v1.04
+## Updated phasemerge analysis statement
+
 
 ## TO-DO
 ## Add automatic index resolution
