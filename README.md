@@ -12,7 +12,7 @@ citation: coming soon
 
 **3.** ***phastrigs***: Predicts miRNAs triggers for PHAS locus using sPARTA miRNA-target predictions. If supplied with PARE/Degradome data then data supported triggers are reported
 
-Please see *PHASworks* [wiki] (https://github.com/atulkakrana/PHASworks/wiki) for details on installation, usage, output files and more.
+Please see *PHASworks* [wiki](https://github.com/atulkakrana/PHASworks/wiki) for details on installation, usage, output files and more.
 
 Author: Atul kakrana
 E-mail: kakrana@udel.edu or kakrana@gmail.com
