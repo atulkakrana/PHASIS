@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phaser: identifies phased siRNA clusters
-## Updated: version-v1.04 03/17/17 
+## Updated: version-v1.05 03/23/17 
 ## Property of Meyers Lab at University of Delaware
 ## Author: Atul Kakrana kakrana@udel.edu
 
@@ -217,7 +217,12 @@ def readSet(setFile):
                 if param.strip() == '@runType':
                     global runType
                     runType = str(value.strip())
-                    print('User Input runType               :',runType)
+                    if (runType != "G") and (runType != "T") and (runType != "S"):
+                        print("Please input correct setting for '@runType' parameter in 'phasworks.set' file")
+                        print("Script will exit for now\n")
+                        sys.exit()
+                    else:
+                        print('User Input runType               :',runType)
 
                 elif param.strip() == '@reference':
                     global reference
@@ -241,7 +246,12 @@ def readSet(setFile):
                 elif param.strip() == '@libFormat':
                     global libFormat
                     libFormat = str(value.strip())
-                    print('user library format              :',libFormat)
+                    if (libFormat != "T") and (libFormat != "F"):
+                        print("Please input correct setting for '@libFormat' parameter in 'phasworks.set' file")
+                        print("Script will exit for now\n")
+                        sys.exit()
+                    else:
+                        print('user library format              :',libFormat)
 
                 elif param.strip() == '@phase':
                     global phase
@@ -1080,6 +1090,9 @@ if __name__ == '__main__':
 
 ## v1.03 -> v1.04
 ## Updated phasemerge analysis statement
+
+## v1.04 -> v1.05
+## Added sanity checks to readset function
 
 
 ## TO-DO

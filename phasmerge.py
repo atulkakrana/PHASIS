@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## collapser: Collapses library specific results to genome-level and summarizes them
-## Updated: version-1.25 03/16/17
+## Updated: version-1.26 03/23/17
 ## Property of Meyers Lab at University of Delaware
 ## author: kakrana@udel.edu
 
@@ -47,21 +47,21 @@ libcol          = 7
 phasiLenFilter  = 'N'                                               ## 'Y' then tags of phase length will be written from the cluster | 'N' - All tags will be written
 minAbun         = 1                                                 ## Minimum abundance of tag to be written
 matchThres      = 0.99                                              ## Ratio of match required by the cluster to phased loci | For transcripts, to capture biggest cluster like for mapping to IR, use a lower ratio so that longer transcript with smaller match ratio can be included
-selfmergeratio  = 0.45                                              ## Default was 0.45. Use a higher value to get lots of the PHAS even if these are overlapping from different p-values.This is good for manual curation of a few loci. Otherwise use a lower value 0.25 to 0.45 to pick one of those overlapping.
+selfmergeratio  = 0.05                                              ## Default was 0.45. Use a higher value to get lots of the PHAS even if these are overlapping from different p-values.This is good for manual curation of a few loci. Otherwise use a lower value 0.25 to 0.45 to pick one of those overlapping.
 startbuff       = 0                                                 ## While extracting sequence through coords2FASTA a buffer is added to start, 
                                                                     ## start position in phased ID has this buffer added, ## so minus this buffer 
                                                                     ## for better matching with real loci
 
-maxTagRatioCut  = 0.65
-phasCyclesCut   = 10
-totalAbunCut    = 320                                               ## Atleast 20 reads per position x 2 (strands) x 8 (pos) = 320
+maxTagRatioCut  = 0.90
+phasCyclesCut   = 7
+minAbunCut      = 320                                               ## Atleast 20 reads per position x 2 (strands) x 8 (pos) = 320
 
 
 #### ANNOTATION DEFAULTS ############
 
-overlapPerc     = 0.1       ## Minimum percentage of PHAS covered by exon. Keep 0 for finding overlapping genes and 0.20 or above for finding precursors
-overlapCutoff   = 50       ## Values of minimum overlap in nts. This is required if PHAS overlap is checked for precursors and not overlap with any region of genes. FOr precursors one will expect an overlap of 4 phases or more
-annomode        = 3         ## 1: PASA feature (GTF) file | 2: Trinity | 3: Rocket feature (GTF) file or generic gtf file with missing "transcript" entry | 4: Both rocket and trinity feature files | 5: PacBio GTF | 6: Comprehensive transciptome (from PASA) - NOTE: New mode should be registered in overlapchecker function
+overlapPerc     = 0.1      ## Minimum percentage of PHAS covered by exon. Keep 0 for finding overlapping genes and 0.20 or above for finding precursors
+ntoverlapCutoff = 50       ## Values of minimum overlap in nts. This is required if PHAS overlap is checked for precursors and not overlap with any region of genes. FOr precursors one will expect an overlap of 4 phases or more
+annomode        = 3        ## 1: PASA feature (GTF) file | 2: Trinity | 3: Rocket feature (GTF) file or generic gtf file with missing "transcript" entry | 4: Both rocket and trinity feature files | 5: PacBio GTF | 6: Comprehensive transciptome (from PASA) - NOTE: New mode should be registered in overlapchecker function
 
 
 #### Command Line ##############################
@@ -231,7 +231,13 @@ def readSet(setFile):
                 if param.strip() == '@runType':
                     global runType
                     runType = str(value.strip())
-                    print('User Input runType:              :',runType)
+                    # print(runType)
+                    if (runType != "G") and (runType != "T") and (runType != "S"):
+                        print("Please input correct setting for '@runType' parameter in 'phasworks.set' file")
+                        print("Script will exit for now\n")
+                        sys.exit()
+                    else:
+                        print('User Input runType               :',runType)
 
                 elif param.strip() == '@index':
                     global index
@@ -245,22 +251,27 @@ def readSet(setFile):
                     global libs
                     # libs = list(map(str,value.strip().split(',')))
                     libs     = [str(x) for x in value.strip().split(',') if x.strip() != '' ] ## This is my dope...
-                    print('User Input Libs:                 :',libs)
+                    print('User Input Libs:                 :',",".join(libs))
 
                 elif param.strip() == '@reference':
                     global reference
                     reference = str(value.strip())
-                    print('User Input reference:            :',reference)
+                    print('User Input reference             :',reference)
 
                 elif param.strip() == '@phase':
                     global phase
                     phase = int(value.strip())
-                    print('User Input for phase length:     :',phase)
+                    print('User Input for phase length      :',phase)
                 
-                elif param.strip() == '@path_prepro_git':
-                    global phaster_path
-                    phaster_path = str(value.strip()).rstrip("/")+"/phaster"
-                    print('User Input for phaster path:     :',phaster_path) 
+                elif param.strip() == '@libFormat':
+                    global libFormat
+                    libFormat = str(value.strip())
+                    if (libFormat != "T") and (libFormat != "F"):
+                        print("Please input correct setting for '@libFormat' parameter in 'phasworks.set' file")
+                        print("Script will exit for now\n")
+                        sys.exit()
+                    else:
+                        print('User Input for library type      :',libFormat) 
 
             else:
                 #print("Missed line:",line)
@@ -376,7 +387,7 @@ def prepare(pcutoff,libs,res_folder):
     ### Make a new folder ##############################
     ####################################################
     temp_folder = "./%s/%s" % (res_folder,"temp")
-    print("WARNING: 'phasmerge' results exist from earlier run, these will be deleted")
+    print("WARNING: Temporary files exits from earlier run, these will be deleted")
     shutil.rmtree("%s" % (res_folder),ignore_errors=True)
     os.mkdir("%s" % (res_folder))
     os.mkdir("%s" % (temp_folder))
@@ -391,7 +402,7 @@ def prepare(pcutoff,libs,res_folder):
         alib    = alistF.rsplit(".",7)[0]
         # print("alib:",alib)
         if alib in libs_name:
-            print("copied for summarization:%s" % (alistF))
+            # print("copied for summarization:%s" % (alistF))
             acount += 1
             afile   = "%s/%s" % (args.dir,alistF)
             shutil.copy(afile,temp_folder)
@@ -457,7 +468,7 @@ def collapser(temp_folder,fileType):
     if fileType == 'L':
         print('\nList files selected for analysis - Converting them to readable format')
         fls     = glob.glob(r'./%s/*.PARE.validation.list' % (temp_folder))
-        print ('Here are the files that will be converted:',fls,'\n')
+        # print ('Here are the files that will be converted:',fls,'\n')
         print ('Total files to analyze: %s' % (len(fls)))
 
         ### Prepare first file for comaprision
@@ -1387,6 +1398,7 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
                 time.sleep(2)
                 # sys.exit()
             totalAbun   = sum(int(i[1]) for i in abunList_sort) ## Phased abundance
+            nminabun    = sum(int(i[1]) >= minAbunCut for i in abunList_sort)
             maxTagRatio = round(maxAbun/totalAbun,2)
 
 
@@ -1403,7 +1415,7 @@ def writer_summ(clustfile,resList,dictList,pcutoff):
             if args.safesearch == "T":
                 ## Apply filters
                 # print("Total Abudnace:",totalAbun)
-                if (float(maxTagRatio) <= maxTagRatioCut) and (int(phasCycles) >= phasCyclesCut) and (totalAbun >= totalAbunCut) and (phaslen >= phase*6): ##  
+                if (float(maxTagRatio) <= maxTagRatioCut) and (int(phasCycles) >= phasCyclesCut) and (phaslen >= (phase*6)+3) and (nminabun >= 1): ##  3-nt addded to PHAS len to account for dicer offsets
                     fh_out2.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in phasinfo[:-1]),phasID,str(phasCycles),sizeRatio,maxTagRatio,'\t'.join(str(x) for x in libAbunSum),totalAbun,maxTag,maxAbun,maxTag2,maxAbun2,phasinfo[-1]))
                 else:
                     ## Bad Quality prediction - Skip
@@ -1573,7 +1585,7 @@ def FileCombine(alist,aname):
     fh_out = open(aname ,'w')
     
     for x in alist:
-        print ("--Concatanating:%s"% (x))
+        # print ("--Concatanating:%s"% (x))
         afile   = open('./%s' % (x), 'r')
         data    = afile.read()
         afile.close()
@@ -1623,10 +1635,11 @@ def readFileToDict(index):
     # can be associated with this dictionary later
     fileDict = {index: {}}
 
+    if libFormat == "T":
     # Read through the file and store the tag count file into 
     # the dictionary
-    with open(filename) as f:
-        for line in f:
+        fh_in       = open(filename, 'r')
+        for line in fh_in:
             # tag and abundance should be separated by a tab. Strip
             # the new line at the end of each line
             tag, abun = line.strip('\n').split('\t')
@@ -1638,7 +1651,30 @@ def readFileToDict(index):
             # Store the 
             fileDict[index][tag] = int(abun)
 
-    f.closed
+        fh_in.close()
+
+    elif libFormat == "F":
+        
+        ### Read files
+        filename    = "%s.fas" % filename.rpartition(".")[0] 
+        fh_in       = open(filename, 'r')
+        fasta       = fh_in.read()
+        fasta_splt  = fasta.split('>')
+        
+        for i in fasta_splt[1:]:
+            ent     = i.split('\n')
+            abun    = ent[0].split("|")[1].strip()
+            tag     = ent[1].strip()
+            # print("Ent:",ent)
+            # print("Tag:%s | Abun:%s" % (tag,abun))
+
+            fileDict[index][tag] = int(abun)
+
+        fh_in.close()
+
+    else:
+        ## @libFormat not accepted
+        sys.exit()
 
     return(fileDict)
 
@@ -1958,7 +1994,7 @@ def overlapChecker(phasList,gtfList,pcutoff):
 
                 ## Filters and output results ####
                 ##################################
-                if tperc >= overlapPerc and toverlap >= overlapCutoff:
+                if tperc >= overlapPerc and toverlap >= ntoverlapCutoff:
                     matchflag   = True
                     overlapNameList.append(aphasID)
                     fh_out.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % ('\t'.join(str(x) for x in aent), aphasID, atrans, str(toverlap), str(tperc), str(exonsOverlap), str(eperc), str(nexons), tstrand, str(tlen)))
@@ -2194,6 +2230,7 @@ def summparse(adir):
     acount = 0
     for i in afile:
         ent     = i.strip('\n').split('\t') ## Name, p-val, chr, start, end, identifier, best k-val, phasi ratio, max tag ratio
+        # print(ent)
         aname   = ent[0]
         apval   = ent[1]
         achr    = ent[2]
@@ -2213,7 +2250,7 @@ def summparse(adir):
 
     return summL,summD,summfile
 
-def compare(summL1,summD1,summL2,summD2):
+def compare(summL1,summD1,summL2,summD2,log_file):
     '''
     Compares the PHAS loci between two sumamries
     '''
@@ -2266,7 +2303,7 @@ def compare(summL1,summD1,summL2,summD2):
                     matcoords   = "%s:%s" % (amatcoord,bmatcoord)
                     # print("astart:%s | bstart:%s | amatcoord:%s | bmatcoord:%s" % (astart,bstart,amatcoord,bmatcoord))
                     matlen      = int(matblocks[0][2])
-                    abphas  = aphas+bphas
+                    abphas      = aphas+bphas
                     resList.append((abphas,matchratio1,matcoords,matlen))
                     negSet.add(bid)
                     
@@ -2319,6 +2356,11 @@ def compare(summL1,summD1,summL2,summD2):
     print("PHAS in summary1: %s | Matched:%s | Unmatched:%s" % (len(summL1),acount,ccount))
     print("PHAS in summary2: %s | Matched:%s | Unmatched:%s" % (len(summL2),bcount,dcount))
     print("Matched %s:%s (summary1:summary2)\n" % (acount,ecount))
+
+    with open(log_file, "a") as fh_log:
+        fh_log.write("\nPHAS in summary1: %s | Matched:%s | Unmatched:%s\n" % (len(summL1),acount,ccount))
+        fh_log.write("PHAS in summary2: %s | Matched:%s | Unmatched:%s\n" % (len(summL2),bcount,dcount))
+        fh_log.write("Matched %s:%s (summary1:summary2)\n" % (acount,ecount))
 
 
     return resList
@@ -2427,14 +2469,14 @@ def main():
         
         global overlapCutoff
         if runType == 'G' or runType == "S":
-            overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
+            overlapCutoff = 0.05 ## = 0.25 for genomic and 0.50 for ncRNAs
         else:
-            overlapCutoff = 0.25 ## = 0.25 for genomic and 0.50 for ncRNAs
+            overlapCutoff = 0.10 ## = 0.25 for genomic and 0.50 for ncRNAs
 
         if fileType == 'L':
             print('\nList files selected for analysis - Converting them to readable format')
             fls     = glob.glob(r'%s/*.PARE.validation.list' % (temp_folder))
-            print ('Here are the files that will be converted:',fls,'\n')
+            # print ('Here are the files that will be converted:',fls,'\n')
             print ('Total files to analyze: %s' % (len(fls)))
 
             ### Prepare first file for comaprision
@@ -2636,17 +2678,19 @@ def main():
         summL2,summD2,summfile2 = summparse(args.dir2)
         fh_log.write("Summary1:%s\n" % (summfile1))
         fh_log.write("Summary2:%s\n" % (summfile2))
+        fh_log.close()
 
         ##################
         #### Compare
-        resList = compare(summL1,summD1,summL2,summD2)
+        resList = compare(summL1,summD1,summL2,summD2,log_file)
 
         ##################
         #### Write Results
         compfile = compare_writer(resList)
 
-
-        fh_log.close()
+        print ("\n####'phasmerge' took", round(time.time()-start,2),"seconds")
+        print ("#### Please see '%s' folder for results\n" % (comp_folder))
+        # print("#### 'phastrigs' can be run by command: python3 phastrigs -mode auto -dir %s -mir your-miRNA-filename\n" % (res_folder))
 
     else:
         sys.exit()
@@ -2725,7 +2769,7 @@ if __name__ == '__main__':
 
 ## v1.09 -> v1.10
 ## Added Reza modules to fetch library wise abundances
-## Tested Rzea module using the tagcount files downloaded from server with norm abudnaces and they match with the internal version
+## Tested Reza module using the tagcount files downloaded from server with norm abudnaces and they match with the internal version
 
 ## v1.10 -> v1.11
 ## Input files with *.fas extension had *.txt extension in list files so these were not matching with the "libs". In prepare function
@@ -2787,28 +2831,24 @@ if __name__ == '__main__':
 ## Updated safesearch filters
 ## Moved sqlite3 import to args.gtf
 
-## v1.24 -> v1.25 [stable]
+## v1.24 -> v1.25 
 ## Fixed - Annotate functions being called even without a GTF file
 ## Reduced continuous phase positions cutoff to 10, and added phaslen filter to safesearch
 ## Closed a few print statements
+## Added final prints for compare mode and added summary to comapre log file
 
-#### TURN ON PARALLEL LIBRARY CACHING  - readFileToDict function
-
-
-
+## v1.25 -> v1.26 [stable]
+## Optimized safesearch parameters by adding libwise abundance cutoff
+## Added code to parse FASTA file from phasdetect with abudnaces in dictList module
+## Changed the way files were handled in earlier function for tagcount file in dictList module
+## Added sanity to checks to readset function
+## Closed print statments for copying results, cluster and merging of these
+## 'overlapCutoff' variable was named redundantly changed one for annotations to 'ntoverlapCutoff'
 
 ########################################
 ## PUBLIC RELEASE
 ## Turn OFF debug mode
-## Revert overlapCutoff back to 0.25 - Done
-## Merge ratio in self merge (originally 0.40) - Done
 
 #######################################
 #### POSSIBLE PENDING ISSUES###########
-## Script generates an error at final exit() in __main__
-## Error in atexit._run_exitfuncs:
-## Traceback (most recent call last):
-##  File "/usr/local/lib/python3.3/multiprocessing/forking.py", line 145, in terminate
-##    os.kill(self.pid, signal.SIGTERM)
-## ProcessLookupError: [Errno 3] No such process
-
+## None

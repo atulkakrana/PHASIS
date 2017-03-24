@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## revFerno: Reverse maps miRferno results to genome co-ordinates
-## Updated: version-1.0 01/04/2017
+## Updated: version-1.01 03/23/2017
 ## Property of Meyers Lab at University of Delaware
 ## Author: kakrana@udel.edu
 
@@ -239,7 +239,12 @@ def readSet(setFile):
                 if param.strip() == '@runType':
                     global runType
                     runType = str(value.strip())
-                    print('User Input runType               :',runType)
+                    if (runType != "G") and (runType != "T") and (runType != "S"):
+                        print("Please input correct setting for '@runType' parameter in 'phasworks.set' file")
+                        print("Script will exit for now\n")
+                        sys.exit()
+                    else:
+                        print('User Input runType               :',runType)
 
                 elif param.strip() == '@index':
                     global index
@@ -259,7 +264,7 @@ def readSet(setFile):
                 elif param.strip() == '@userLibs':
                     global libs
                     libs = list(map(str,value.strip().split(',')))
-                    print('User Input Libs                  :',libs)
+                    print('User Input Libs                  :',",".join(libs))
 
                 elif param.strip() == '@reference':
                     global reference
@@ -1743,6 +1748,10 @@ if __name__ == '__main__':
 
 ## v099 -> v1.0 [major]
 ## Fixed issues related with runType mode "T"
+
+## v1.0 -> v1.01 [stable]
+## Added sanity to checks to readset function
+
 
 #### POTENTIAL ISSUES
 ## 1. If a user uses his own index which is made from un-clean FASTA file. In that case.
