@@ -11,7 +11,7 @@
 @index		=
 
 <<< Advanced Settings, value in text>>>
-@minDepth		= 5
+@minDepth		= 3
 @clustBuffer	= 300
 @mismat		= 0
 
