@@ -1,5 +1,7 @@
 ## *PHASIS* suite for phased clusters discovery, comparison, annotation and to identify miRNA triggers
 
+** NOTE: We are in processes of releasing the first public (and stable) version (v3) and updating the [wiki] (https://github.com/atulkakrana/PHASIS/wiki). This new version will be updated to our [Release] (https://github.com/atulkakrana/PHASIS/releases) page before 7-Mar-2017**
+
 version: release candidate v3    
 updated: 03/05/2017    
 citation: coming soon   
