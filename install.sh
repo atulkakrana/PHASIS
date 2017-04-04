@@ -2,10 +2,9 @@
 
 ## Updated: version-v1.03 03/05/17 
 
-printf "\nIn case of any issue at any point in phasworks analyses, contact authors at:\n"
+printf "\nIn case of any issue at any point in PHASIS analyses, contact authors at:\n"
 # printf "Atul Kakrana: kakrana@udel.edu\n"
-# printf "Reza Hammond: rkweku@udel.edu\n\n"
-printf "https://github.com/atulkakrana/phasworks/issues\n\n"
+printf "https://github.com/atulkakrana/phasis/issues\n\n"
 
 #### Compile phasdetect #########
 
@@ -75,34 +74,34 @@ fi
 
 #### Place core scripts ######
 
-if [ -d ~/phasworks ]
+if [ -d ~/phasis ]
 then
-  rm -rf ~/phasworks
-  mkdir ~/phasworks 
+  rm -rf ~/phasis
+  mkdir ~/phasis 
   # printf "file deleted\n"
 else
-  mkdir ~/phasworks
+  mkdir ~/phasis
 fi
 
 if [ ! -f ./phasclust.genome.v2.pl ]
 then
-  printf "phasworks-core source not found in current directory\n"
+  printf "phasis-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n\n"
   printf "Download complete package and rerun script\n"
   exit 1
 else
-  cp phasclust.genome.v2.pl ~/phasworks
+  cp phasclust.genome.v2.pl ~/phasis
   rm phasclust.genome.v2.pl
 fi
 
 if [ ! -f ./phasclust.MUL.v2.pl ]
 then
-  printf "phasworks-core source not found in current directory\n"
+  printf "phasis-core source not found in current directory\n"
   printf "Please check that you downloaded complete archive\n"
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  cp phasclust.MUL.v2.pl ~/phasworks
+  cp phasclust.MUL.v2.pl ~/phasis
   rm phasclust.MUL.v2.pl
 fi
 
@@ -113,18 +112,18 @@ then
   printf "Download complete package and rerun script\n\n"
   exit 1
 else
-  cp sPARTA.py ~/phasworks
+  cp sPARTA.py ~/phasis
   rm sPARTA.py
 fi
 
 ## Remove old folder
-if [ -d ~/.phasworks ]
+if [ -d ~/.phasis ]
 then
-  rm -r ~/.phasworks 
+  rm -r ~/.phasis 
   # printf "file deleted\n"
 fi
 
-mv ~/phasworks ~/.phasworks
+mv ~/phasis ~/.phasis
 printf "Done:      core scripts\n"
 
 #### Clean up
@@ -135,14 +134,14 @@ printf "Deleted:   source files\n"
 #############################
 printf "\nNote:'install.sh' cannot be re-used after a successful installation\n"
 printf "Note: If installation fails, then recopy all files and try again\n"
-printf "\nPHASworks suite is ready be used\n"
-printf "See readme here: https://github.com/atulkakrana/phasworks\n\n"
+printf "\nphasis suite is ready be used\n"
+printf "See readme here: https://github.com/atulkakrana/phasis\n\n"
 
 exit 1
 
 
 ### Change Log 
 ## V1.0 -> v1.01
-## Edited names of phasworks-core scripts
+## Edited names of phasis-core scripts
 ## v1.01 -> v1.02
 ## Added sPARTA script

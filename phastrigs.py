@@ -1,9 +1,13 @@
 #!/usr/local/bin/python3
 
-## revFerno: Reverse maps miRferno results to genome co-ordinates
-## Updated: version-1.01 03/23/2017
-## Property of Meyers Lab at University of Delaware
-## Author: kakrana@udel.edu
+## phastrigs: identifies miRNA triggers for phased loci/precursors 
+## updated  : version-1.02 04/04/2017
+## Author   : kakrana@udel.edu
+
+## Copyright (c): 2016, by University of Delaware
+##              Contributor : Atul Kakrana
+##              Affilation  : Meyers Lab (Donald Danforth Plant Science Center, St. Louis, MO)
+##              License copy: Included and found at https://opensource.org/licenses/Artistic-2.0
 
 
 import sys,os,re,time,timeit,datetime,csv,glob,string,shutil,operator,argparse,re,importlib,collections
@@ -15,11 +19,11 @@ from os.path import expanduser
 #########################################################################
 #### USER SETTINGS ######################################################
 
-setFile         = "phasworks.set"         ### Settings file from phaser analysis
+setFile         = "phasis.set"         ### Settings file from phaser analysis
 memFile         = "phasmerge.mem"      ### Memory file from collapser  
 res_folder      = "triggers_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))
 home            = expanduser("~")
-phaster_path    = "%s/.phasworks" % (home)
+phaster_path    = "%s/.phasis" % (home)
 
 ##### DEVELOPER OPTIONS ##########
 nthread         = 6                                         ## Need automatic calculation like nProc
@@ -240,7 +244,7 @@ def readSet(setFile):
                     global runType
                     runType = str(value.strip())
                     if (runType != "G") and (runType != "T") and (runType != "S"):
-                        print("Please input correct setting for '@runType' parameter in 'phasworks.set' file")
+                        print("Please input correct setting for '@runType' parameter in 'phasis.set' file")
                         print("Script will exit for now\n")
                         sys.exit()
                     else:
@@ -374,7 +378,7 @@ def extractSeq(reference,PHASList,phasbuff):
 
     else:
         print("** Invalid @runType value encoutered")
-        print("** Please see settings file 'phasworks.set' for valid options")
+        print("** Please see settings file 'phasis.set' for valid options")
         print("** provide correct @runType value and re-run, script will exit now")
         sys.exit()
 
@@ -1751,6 +1755,9 @@ if __name__ == '__main__':
 
 ## v1.0 -> v1.01 [stable]
 ## Added sanity to checks to readset function
+
+## v1.01 -> v1.02 [stable]
+## Renamed to PHASIS
 
 
 #### POTENTIAL ISSUES

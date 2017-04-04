@@ -1,9 +1,13 @@
 #!/usr/local/bin/python3
 
-## phaser: identifies phased siRNA clusters
-## Updated: version-v1.05 03/23/17 
-## Property of Meyers Lab at University of Delaware
-## Author: Atul Kakrana kakrana@udel.edu
+## phasdetect   : identifies phased siRNA clusters
+## Updated      : version-v1.06 04/04/17 
+## author       : kakrana@udel.edu
+
+## Copyright (c): 2016, by University of Delaware
+##              Contributor : Atul Kakrana
+##              Affilation  : Meyers Lab (Donald Danforth Plant Science Center, St. Louis, MO)
+##              License copy: Included and found at https://opensource.org/licenses/Artistic-2.0
 
 #### FUNCTIONS ###########################################
 
@@ -19,11 +23,11 @@ from os.path import expanduser
 
 
 ### Settings file
-setFile         = "phasworks.set"
-memFile         = "phasworks.mem"
+setFile         = "phasis.set"
+memFile         = "phasis.mem"
 res_folder      = "phased_%s"   % (datetime.datetime.now().strftime("%m_%d_%H_%M"))
 home            = expanduser("~")
-phaster_path    = "%s/.phasworks" % (home)
+phaster_path    = "%s/.phasis" % (home)
 
 ## Degradome - Optional ####################################
 deg             = 'N'                               ## Use Degradome validation, IF yes enter PARE db in line below
@@ -55,7 +59,7 @@ def checkUser():
     '''
     print ("\n#### Checking user ###########################")
     auser = getpass.getuser()
-    print("Hello '%s' - Please report issues at: https://github.com/atulkakrana/PHASworks/issues" % (auser))
+    print("Hello '%s' - Please report issues at: https://github.com/atulkakrana/PHASIS/issues" % (auser))
     # if auser in allowedUser:
     #     print("Hello '%s' - Issues need to be reproted: https://github.com/atulkakrana/phasTER/issues \n" % (auser))
     # else:
@@ -193,7 +197,7 @@ def readSet(setFile):
     if os.path.isfile(setFile):
         pass
     else:
-        print("---Settings file 'phasworks.set' not found in current directory")
+        print("---Settings file 'phasis.set' not found in current directory")
         print("---Please copy it to same directory as script and rerun")
         sys.exit()
 
@@ -218,7 +222,7 @@ def readSet(setFile):
                     global runType
                     runType = str(value.strip())
                     if (runType != "G") and (runType != "T") and (runType != "S"):
-                        print("Please input correct setting for '@runType' parameter in 'phasworks.set' file")
+                        print("Please input correct setting for '@runType' parameter in 'phasis.set' file")
                         print("Script will exit for now\n")
                         sys.exit()
                     else:
@@ -247,7 +251,7 @@ def readSet(setFile):
                     global libFormat
                     libFormat = str(value.strip())
                     if (libFormat != "T") and (libFormat != "F"):
-                        print("Please input correct setting for '@libFormat' parameter in 'phasworks.set' file")
+                        print("Please input correct setting for '@libFormat' parameter in 'phasis.set' file")
                         print("Script will exit for now\n")
                         sys.exit()
                     else:
@@ -740,7 +744,7 @@ def readMem(memFile):
 
 def coreReserve(cores):
     '''
-    Decides the core pool for machine - written to make PHASworks comaptible with machines that 
+    Decides the core pool for machine - written to make PHASIS comaptible with machines that 
     have less than 10 cores - Will be improved in future
     '''
 
@@ -935,7 +939,7 @@ def main(libs):
         firstline   = fh_in.readline()
         if not firstline.startswith('>') and len(firstline.split('\t')) > 1:
             print("** File doesn't seems to be in FASTA format")
-            print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
+            print("** Please provide correct setting for @libFormat in 'phasis.set' settings file")
             sys.exit()
         else:
             print("#### Converting FASTA format to counts #######")
@@ -960,14 +964,14 @@ def main(libs):
         firstline = fh_in.readline()
         if firstline.startswith('>'):
             print("** File seems tobe in FASTA format")
-            print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
+            print("** Please provide correct setting for @libFormat in 'phasis.set' settings file")
             sys.exit()
         else:
             # print("File seems to be in correct format")
             pass
 
     else:
-        print("** Please provide correct setting for @libFormat in 'phasworks.set' settings file")
+        print("** Please provide correct setting for @libFormat in 'phasis.set' settings file")
         print("** If sRNA data is in tag count format use 'T' and for FASTA format use 'F' ")
         sys.exit()
 
@@ -1066,7 +1070,7 @@ if __name__ == '__main__':
 ## Updated script for updated version of phaster core files
 
 ## v0.99 - v1.0
-## Updated the index builder function with optimized parameters. Now 6-8 minutes fater
+## Updated the index builder function with optimized parameters. Now 6-8 minutes faster
 ## Added a argument to run on low memory
 
 ## v1.0 - v1.01
@@ -1093,6 +1097,9 @@ if __name__ == '__main__':
 
 ## v1.04 -> v1.05
 ## Added sanity checks to readset function
+
+##v1.05 -> v1.06
+## Renamed to PHASIS
 
 
 ## TO-DO
