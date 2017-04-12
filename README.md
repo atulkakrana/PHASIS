@@ -2,7 +2,8 @@
 
 **NOTE: We are updating the [wiki](https://github.com/atulkakrana/PHASIS/wiki), it should be ready by 18-Apr-2017**
 
-version: v3 [stable]    
+version: v3
+release: [https://github.com/atulkakrana/PHASIS/releases](https://github.com/atulkakrana/PHASIS/releases)     
 updated: 03/10/2017    
 citation: coming soon   
 
