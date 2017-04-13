@@ -17,9 +17,9 @@ citation: coming soon
 
 Please see *PHASIS* [wiki](https://github.com/atulkakrana/PHASIS/wiki) for details on installation, usage, output files and more.
 
-**Authors:** 
-Atul kakrana   
-kakrana@udel.edu   
+**Authors:**     
+Atul kakrana     
+kakrana@udel.edu       
 
-Pingchuan Li
+Pingchuan Li   
 lipingchuan@gmail.com
