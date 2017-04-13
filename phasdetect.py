@@ -47,7 +47,7 @@ hitsLimit       = 10
 #############################################################
 
 parser      = argparse.ArgumentParser()
-parser.add_argument('--lowmem', action='store_true', default=False, help=
+parser.add_argument('--lowmem', action='store_true', default=True, help=
     'Flag to reduce memory usage for large genomes. Using this flag'\
     'will increase the runtime for phaser')
 
