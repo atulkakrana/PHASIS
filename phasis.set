@@ -1,13 +1,13 @@
 <<< Settings file for PHASIS >>>
 
-<<< Mandatory Settings, value in text, see descriptions below >>>
+<<< Mandatory Settings, see descriptions below >>>
 @runType		= G
 @reference		= rice.genome.fa
 @userLibs		= GSM1081563.tagcount.txt
 @libFormat		= T					
 @phase		= 21
 
-<<< Optional Settings, leave empty to make index on fly, value in text>>>
+<<< Optional Settings, leave empty to make index on fly and reuse, value in text>>>
 @index		=
 
 <<< Advanced Settings, value in text>>>
