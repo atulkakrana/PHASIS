@@ -1,6 +1,6 @@
 ## *PHASIS* suite for phased clusters discovery, comparison, annotation and to identify miRNA triggers
 
-**NOTE: We are updating the [wiki](https://github.com/atulkakrana/PHASIS/wiki), it should be ready by 18-Apr-2017**
+**Please see *PHASIS* [wiki](https://github.com/atulkakrana/PHASIS/wiki) for details on installation, usage, output files and more.**
 
 version: v3     
 release: [https://github.com/atulkakrana/PHASIS/releases](https://github.com/atulkakrana/PHASIS/releases)     
@@ -15,7 +15,7 @@ citation: coming soon
 
 **3.** ***phastrigs***: Predicts miRNAs triggers for *PHAS* locus using sPARTA miRNA-target predictions. If supplied with PARE/Degradome data then data supported triggers are reported
 
-Please see *PHASIS* [wiki](https://github.com/atulkakrana/PHASIS/wiki) for details on installation, usage, output files and more.
+
 
 **Authors:**     
 Atul kakrana     
