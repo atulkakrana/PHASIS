@@ -578,7 +578,7 @@ def indexBuilder(reference):
     else:
         print("File extension for index couldn't be determined properly")
         print("It could be an issue from Bowtie")
-        print("This needs to be reported to 'PHASwroks' developer - Script will exit")
+        print("This needs to be reported to 'PHASIS' developer - Script will exit")
         sys.exit()
 
     print("\n@genomehash:%s | @indexhash:%s" % (refHash, indexHash) )
