@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 ## phasdetect   : identifies phased siRNA clusters
-## Updated      : version-v1.06 04/04/17 
+## Updated      : version-v1.07 24/04/17 
 ## author       : kakrana@udel.edu
 
 ## Copyright (c): 2016, by University of Delaware
@@ -90,11 +90,11 @@ def checkHost(allowedHost):
     
     
     if str(host.strip('\n')) in allowedHost:
-        print("--phasTER is supported on this server - good to go!!!\n")
+        print("--PHASIS is supported on this server - good to go!!!\n")
         pass
     
     else:
-        print("--phasTER is not tested on this server")
+        print("--PHASIS is not tested on this server")
         print("--Run your analysis at any of these servers:%s" % (','.join(x for x in allowedHost)))
         print("--Script will exit now\n")
         sys.exit()
@@ -500,8 +500,8 @@ def optimize(nproc):
     else:
         nthread = 3
 
-    print("\n#### %s cores reserved for analysis ##########" % (str(nproc)))
-    print("#### %s cores assigned to one lib ############\n" % (str(nthread)))
+    print("\n#### %s computing core(s) reserved for analysis ##########" % (str(nproc)))
+    print("#### %s computing core(s) assigned to one lib ############\n" % (str(nthread)))
     # time.sleep(1)
 
 
@@ -519,8 +519,10 @@ def inputList(libs,runType,index,deg,nthread,noiseLimit,hitsLimit,clustBuffer):
     return rawInputs
 
 def indexBuilder(reference):
-    
-    
+    '''
+    Generic index building module
+    '''
+       
     print ("\n#### Fn: indexBuilder #######################")
     ### Sanity check #####################
     if not os.path.isfile(reference):
@@ -538,8 +540,6 @@ def indexBuilder(reference):
 
     ### Prepare Index ##################
     print ("**Deleting old index 'folder' !!!!!!!!!!!**")
-    print("If its a mistake cancel now by pressing ctrl+D and continue from index step by turning off earlier steps- You have 2 seconds")
-    time.sleep(2)
     shutil.rmtree('./index', ignore_errors=True)
     os.mkdir('./index')
     
@@ -563,7 +563,85 @@ def indexBuilder(reference):
         print("Is 'Bowtie' installed? And added to environment variable?")
         print("Script will exit now")
         sys.exit()
-    #####################################
+    ##########################################
+
+    ## Test for index files #################
+    # Close this code if not testing
+    # fh_in1 = open("./index/Triticum_aestivum.TGACv1.dna.toplevel.clean.1.ebwtl",'w')
+    # fh_in1.write("Atul is a developer for PHASIS")
+    # fh_in1.close()
+    ##########################################
+
+    ### Make a memory file ###################
+    fh_out      = open(memFile,'w')
+    # print("Generating MD5 hash for reference")
+    refHash     = (hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()) ### reference hash used instead of cleaned FASTA because while comparing only the user input reference is available
+    
+    print("Generating MD5 hash for Bowtie index")
+    if os.path.isfile("%s.1.ebwtl" % (genoIndex)):
+        indexHash   = (hashlib.md5(open('%s.1.ebwtl' % (genoIndex),'rb').read()).hexdigest())
+    elif os.path.isfile("%s.1.ebwt" % (genoIndex)):
+        indexHash   = (hashlib.md5(open('%s.1.ebwt' % (genoIndex),'rb').read()).hexdigest())
+    else:
+        print("File extension for index couldn't be determined properly")
+        print("It could be an issue from Bowtie")
+        print("This needs to be reported to 'PHASIS' developer - Script will exit")
+        sys.exit()
+
+    print("\n@genomehash:%s | @indexhash:%s" % (refHash, indexHash) )
+    fh_out.write("@timestamp:%s\n" % (datetime.datetime.now().strftime("%m_%d_%H_%M")))
+    fh_out.write("@genomehash:%s\n" % (refHash))
+    fh_out.write("@index:%s\n" % (genoIndex))
+    fh_out.write("@indexhash:%s\n" % (indexHash))
+
+    print("Index prepared:%s\n" % (genoIndex))
+
+    # sys.exit()
+    
+    return genoIndex
+
+def indexBuilder2(reference,fastaclean):
+    '''
+    Prepared to work with parallelized version of FASTA cleaner - Not implemented yet - because parallel FASTA
+    cleaner is slow on bigger genomes - need trouble shooting
+    '''
+    
+    
+    print ("\n#### Fn: indexBuilder #######################")
+
+    ### Prepare Index ##################
+    print ("**Deleting old index 'folder' !!!!!!!!!!!**")
+    shutil.rmtree('./index', ignore_errors=True)
+    os.mkdir('./index')
+    
+    genoIndex   = '%s/index/%s' % (os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Can be merged with genoIndex from earlier part if we use bowtie2 earlier
+    # genoIndex   = './index/%s' % (fastaclean.rpartition('/')[-1].rpartition('.')[0]) ## Alternative approach -Can be merged with genoIndex from earlier part if we use bowtie2 earlier
+    print('Creating index of cDNA/genomic sequences:%s**\n' % (genoIndex))
+    adcv        = "256"
+    divn        = "6"
+
+    ### Run based on input about the memory
+    if args.lowmem:
+        retcode     = subprocess.call(["bowtie-build","-f", fastaclean, genoIndex])
+    else:
+        retcode     = subprocess.call(["bowtie-build","-f", "--noauto", "--dcv", adcv,"--bmaxdivn", divn, fastaclean, genoIndex])
+    
+    if retcode == 0:## The bowtie mapping exit with status 0, all is well
+        # print("Reference index prepared sucessfully")
+        pass
+    else:
+        print("There is some problem preparing index of reference '%s'" %  (reference))
+        print("Is 'Bowtie' installed? And added to environment variable?")
+        print("Script will exit now")
+        sys.exit()
+    ##########################################
+
+    ### Test for index files #################
+    # ## Close this code if not testing
+    # fh_in1 = open("./index/Triticum_aestivum.TGACv1.dna.toplevel.clean.1.ebwtl",'w')
+    # fh_in1.write("Atul is a developer for PHASIS")
+    # fh_in1.close()
+    ##########################################
 
     ### Make a memory file ###################
     fh_out      = open(memFile,'w')
@@ -571,7 +649,7 @@ def indexBuilder(reference):
     refHash     = (hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()) ### reference hash used instead of cleaned FASTA because while comparing only the user input reference is available
     
     print("Generating MD5 hash for Bowtie index")
-    if os.path.isfile("%s.1.ebwtl" % (index)):
+    if os.path.isfile("%s.1.ebwtl" % (genoIndex)):
         indexHash   = (hashlib.md5(open('%s.1.ebwtl' % (genoIndex),'rb').read()).hexdigest())
     elif os.path.isfile("%s.1.ebwt" % (genoIndex)):
         indexHash   = (hashlib.md5(open('%s.1.ebwt' % (genoIndex),'rb').read()).hexdigest())
@@ -629,8 +707,8 @@ def FASTAClean(filename,mode):
 
     ## Read seqeunce file
     fh_in       = open(filename, 'r')
-    print ("PHASER uses FASTA header as key for identifying the phased loci")
-    print ("Cleaning header '%s' reference FASTA file" % (filename))
+    print ("phasdetect uses FASTA header as key for identifying the phased loci")
+    print ("Caching '%s' reference FASTA file" % (filename))
     
     ## Write file
     if mode == 0:
@@ -708,10 +786,12 @@ def readMem(memFile):
     Reads memory file and gives global variables
     '''
     print ("#### Fn: memReader ############################")
-    fh_in   = open(memFile,'r')
-    memRead = fh_in.readlines()
+    fh_in       = open(memFile,'r')
+    memRead     = fh_in.readlines()
     fh_in.close()
 
+    memflag     = True
+    varcount    = 0 
     for line in memRead:
         if line: ## Not empty
             if line.startswith('@'):
@@ -724,23 +804,39 @@ def readMem(memFile):
 
                 if param == '@genomehash':
                     global existRefHash
+                    varcount+=1
                     existRefHash = str(value)
                     print('Existing reference hash          :',existRefHash)
 
                 elif param == '@indexhash':
                     global existIndexHash
+                    varcount+=1
                     existIndexHash = str(value)
                     print('Existing index hash              :',existIndexHash)
 
                 elif param == '@index':
                     global index
+                    varcount+=1
                     index = str(value)
                     print('Existing index location          :',index)
                 
                 else:
                     pass
 
-    return None
+    ## Sanity Check - Memory file is not empty, from a crash
+    # if existRefHash.strip() == '':
+    #     memflag = False
+    # elif existIndexHash.strip() == '':
+    #     memflag = False
+    # elif index.strip() == '':
+    #     memflag = False
+
+    if varcount == 3:
+        memflag = True
+    else:
+        memflag = False
+
+    return memflag
 
 def coreReserve(cores):
     '''
@@ -765,7 +861,101 @@ def coreReserve(cores):
 
     return nproc
 
+#### FASTA CLEAN P - IN DEV
+
+def FASTAread(filename):
+    
+    '''
+    Reads FASTA file to alist
+    '''
+    ### Sanity check #####################
+    if not os.path.isfile(reference):
+        print("'%s' reference file not found" % (reference))
+        print("Please check the genomeFile - Is it in specified directory? Did you input wrong name?")
+        print("Script will exit for now\n")
+        sys.exit()
+    else:
+        print("Reference file located - Preparing to create index")
+        pass
+    #####################################
+
+    ### Read seqeunce file ##############
+    fh_in       = open(filename, 'r')
+    print ("phasdetect uses FASTA header as key for identifying the phased loci")
+    print ("Caching reference '%s' FASTA file" % (filename))
+
+    fasta       = fh_in.read()
+    fasta_splt  = fasta.split('>')
+    print("Cached FASTA file with %s entries" % (len(fasta_splt[1:])))
+
+    fh_in.close()
+
+    return fasta_splt[1:]
+
+def FASTAclean(ent):
+    '''
+    Cleans one entry of FASTA file - multi-line fasta to single line, header clean, empty lines removal
+    '''
+
+    ent_splt    = ent.split('\n')
+    aname       = ent_splt[0].split()[0].strip()
+    # print("Cleaning - %s" % (aname))
+    
+    if runType == 'G':
+        ## To match with phasing-core script for genome version which removed non-numeric and preceding 0s
+        bname = re.sub("[^0-9]", "", aname).lstrip('0')
+    else:
+        bname = aname
+    
+    bseq     = ''.join(x.strip() for x in ent[1:]) ## Sequence in multiple lines
+
+    return bname,bseq
+
+def FASTAwrite(filename,alist,mode):
+    '''
+    Writes list of processed/cleaned FASTA
+    '''
+
+    ## Write file
+    if mode == 0:
+        fastaclean = ('%s/%s.clean.fa' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0])) ## os.getcwd(),fastaclean.rpartition('/')[-1].rpartition('.')[0]
+    else:
+        print("Input correct mode- 0: Normal | 1: Seqeunces reversed | 2: Seqeunces reverse complemented | 3: Seqeunces complemented only")
+        print("USAGE: cleanFasta.v.x.x.py FASTAFILE MODE")
+        sys.exit()
+
+    ### Outfiles
+    fh_out1     = open(fastaclean, 'w')
+    fastasumm   = ('%s/%s.summ.txt' % (os.getcwd(),filename.rpartition('/')[-1].rpartition('.')[0]))
+    fh_out2     = open(fastasumm, 'w')
+    fh_out2.write("Name\tLen\n")
+
+    acount      = 0     ## count the number of entries
+    empty_count = 0     ## count empty entries
+    
+    for ent in alist:
+        aname,aseq  = ent
+        alen        = len(aseq)
+    
+        if alen > 200:
+            fh_out1.write('>%s\n%s\n' % (aname,aseq))
+            fh_out2.write('%s\t%s\n' % (aname,alen))
+            acount+=1
+        else:
+            empty_count+=1
+            pass
+
+
+    fh_out1.close()
+    fh_out2.close() 
+
+    print("Fasta file with reduced header: '%s' with total entries %s is prepared" % (fastaclean, acount))
+    print("There were %s entries with empty/short sequences,these were removed\n" % (empty_count))
+    
+    return fastaclean,fastasumm
+
 #### DE-DUPLICATOR MODULES ####
+
 def dedup_process(alib):
     '''
     To parallelize the process
@@ -870,46 +1060,72 @@ def main(libs):
         ### Check genome file and index
         if not os.path.isfile(memFile):
             print("This is first run - create index")
+            indexflag = False       ## index will be made on fly
+        
+        else:
+            memflag     = readMem(memFile)
+            if memflag  == False:
+                print("Memory file is empty - seems like previous run crashed")
+                print("Creating index")
+                indexflag = False   ## index will be made on fly
+
+            elif memflag  == True:
+                ## valid memory file detected - use existing index 
+                print("Generating MD5 hash for current reference file")
+                currentRefHash = hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()
+                print('Current reference hash           :',currentRefHash)
+                
+                #### Test #######
+                # if os.path.isdir(index.rpartition('/')[0]):
+                #     print("There is a folder names 'index'")
+                #     pass
+                
+                # if currentRefHash == existRefHash:
+                #     print("current ref. hash is same as exiting ref hash")
+                #     pass
+                # sys.exit()
+
+                if currentRefHash == existRefHash:
+                    # print("Current reference file matches with the earlier run")
+                    indexIntegrity,indexExt = indexIntegrityCheck(index)
+                    if indexIntegrity:          ### os.path.isdir(index.rpartition('/')[0]):
+                        print("Index status                     : Re-use")
+                        genoIndex   = index
+                        indexflag   = True
+                        fh_run.write("Indexing Time: 0s\n")
+                    else:
+                        print("Index status                     : Re-make")
+                        indexflag   = False   ## index will be made on fly
+                else:
+                    ## Different reference file - index will be remade
+                    print("Index status                     : Re-make")
+                    indexflag       = False
+                    print("Existing index does not matches specified genome - It will be recreated")
+
+
+        if indexflag == False:
+            ## index will be remade
+
+            ## original function - active
             tstart      = time.time()
             genoIndex   = indexBuilder(reference)
             tend        = time.time()
             fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
-        
-        else:
-            print("Generating MD5 hash for current reference file")
-            currentRefHash = hashlib.md5(open('%s' % (reference),'rb').read()).hexdigest()
-            readMem(memFile)
-            print('Current reference hash           :',currentRefHash)
-            
-            #### Test #######
-            # if os.path.isdir(index.rpartition('/')[0]):
-            #     print("There is a folder names 'index'")
-            #     pass
-            
-            # if currentRefHash == existRefHash:
-            #     print("current ref. hash is same as exiting ref hash")
-            #     pass
-            # sys.exit()
 
-            if currentRefHash == existRefHash:
-                # print("Current reference file matches with the earlier run")
-                indexIntegrity,indexExt = indexIntegrityCheck(index)
-                if indexIntegrity:          ### os.path.isdir(index.rpartition('/')[0]):
-                    print("Index status                     : Re-use")
-                    genoIndex = index
-                    fh_run.write("Indexing Time: 0s\n")
-                else:
-                    print("Index status                     : Re-make")
-                    tstart      = time.time()
-                    genoIndex   = indexBuilder(reference)
-                    tend        = time.time()
-                    fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
-            else:
-                print("Existing index does not matches specified genome - It will be recreated")
-                tstart      = time.time()
-                genoIndex   = indexBuilder(reference)
-                tend        = time.time()
-                fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
+            # ## parallel function - not used - slow on large genomes like wheat due to I/O of data to different cores
+            # fastaL                  = FASTAread(reference)
+            # ## Test - Serial mode
+            # # cleanFasL = []
+            # # for ent in fastaL:
+            # #     bname,bseq = FASTAclean(ent)
+            # #     cleanFasL.append((bname,bseq))
+            # cleanFasL               = PPResults(FASTAclean,fastaL)
+            # fastaclean,fastasumm    = FASTAwrite(reference,cleanFasL,0)
+            # genoIndex               = indexBuilder(reference)
+            # tend                    = time.time()
+            # fh_run.write("Indexing Time:%ss\n" % (round(tend-tstart,2)))
+
+
     else:        
         genoIndex = index
         if not (os.path.isfile("%s.1.ebwt" % (genoIndex)) or os.path.isfile("%s.1.ebwtl" % (genoIndex))) :
@@ -1098,8 +1314,13 @@ if __name__ == '__main__':
 ## v1.04 -> v1.05
 ## Added sanity checks to readset function
 
-##v1.05 -> v1.06
+## v1.05 -> v1.06
 ## Renamed to PHASIS
+
+## v1.06 -> v1.07
+## Added check for memory file, if an empty one exists from earlier crash
+## Fixed issue with index extension determination for big genomes
+## organized the index builder call in main(). It is now called at one place
 
 
 ## TO-DO

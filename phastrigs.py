@@ -50,7 +50,7 @@ reqflags.add_argument('-mode', default='auto', help=
     'user supplied values for -coord, -predtype, -predfile and -phas parameter',required=True)
 
 reqflags.add_argument('-dir',  default='', type=str, help='directory from your '\
-    'collapser run for which triggers need to be identified. Required parameter', required=True)
+    'phasmerge run for which triggers need to be identified. Required parameter', required=True)
 
 parser.add_argument('-score', default='7', type=float, help='target score cutoff for '\
     'predicted targets to be used for trigger identification. Optional parameter', required=False )
@@ -143,7 +143,7 @@ elif args.mode == "man":
     ####
     if not args.dir:
         if args.predfile:
-            print("\n** File from collapser not provided so only the processing of target prediction "\
+            print("\n** File from phasmerge not provided so only the processing of target prediction "\
                 "or validation file will be performed")
             time.sleep(2)
         elif not args.predfile:
@@ -1088,7 +1088,7 @@ def fetchSequences(fastaD,fastalenD,coordsL,abuff):
         
         else:
             print("** Unexpected strand encountered:%s" % (astrand))
-            print("** Please check the '*collapsed.txt' results file from 'collapser' analysis")
+            print("** Please check the '*collapsed.txt' results file from 'phasmerge' analysis")
             print("** Script will exit now")
             sys.exit()
 
