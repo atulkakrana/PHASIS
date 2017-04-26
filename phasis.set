@@ -18,7 +18,7 @@
 <<<Settings Help>>>
 <@runType		- G: Running on whole genome | T: running on transcriptome | S: running on scaffolded genome>
 <@reference	- If @runType = ‘G’ then genome FASTA |  @runType = ’S’ or ’T’ then your scaffolds or transcriptome FASTA>
-<@userLibs		- Specify library IDs in comma separated format to fetch data. Used only if @fetchLib setting is set to "N">
+<@userLibs		- Specify small RNA library names, separated by comma>
 <@libFormat	- Specify the sRNA library format. F: FASTA Format | T: Tag count format>
 <@phase		- Desired phase to use for prediction. 21 for 21 nt PHAS | 24 for 24 nt PHAS>
 <@index		- If bowtie index exist already provide the path and index suffix. If not, then leave blank, the index will be made in first run and will be reused in subsequent runs>
