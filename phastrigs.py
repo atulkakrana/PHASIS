@@ -226,7 +226,7 @@ def readSet(setFile):
     if os.path.isfile(setFile):
         pass
     else:
-        print("---Settings file 'prepro.set' not found in current directory")
+        print("---Settings file 'phasis.set' not found in current directory")
         print("---Please copy it to same directory as script and rerun")
         sys.exit()
 
