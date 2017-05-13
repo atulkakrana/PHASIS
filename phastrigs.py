@@ -1750,8 +1750,10 @@ if __name__ == '__main__':
     start = time.time()
     main()
     end = time.time()
-    print('\nThe run has completed sucessfully')
-    print('Complete run time is %ss\n' % (round(end-start,2)))
+    print('\n\n#### Trigger analysis finished successfully')
+    print("#### Results are in folder: %s" % (res_folder))
+
+    # print('Complete run time is %ss\n' % (round(end-start,2)))
     sys.exit()
 
 

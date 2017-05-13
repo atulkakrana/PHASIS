@@ -1,12 +1,16 @@
 ## sPARTA: small RNA-PARE Target Analyzer public version 
-## Updated: version-1.23 11/03/2017
-## Property of Meyers Lab at University of Delaware
+## Updated: version-1.25 05/13/2017
 ## Author: kakrana@udel.edu
 ## Author: rkweku@udel.edu
 
+## Copyright (c): 2016, by University of Delaware
+##              Contributor : Atul Kakrana
+##              Affilation  : Meyers Lab (Donald Danforth Plant Science Center, St. Louis, MO)
+##              License copy: Available at https://opensource.org/licenses/Artistic-2.0
+
 
 #### PYTHON FUNCTIONS ##############################
-import sys,os,re,time,glob,shutil,operator,datetime,argparse,importlib
+import sys,os,re,time,glob,shutil,operator,datetime,argparse,importlib,getpass
 import subprocess, multiprocessing
 from multiprocessing import Process, Queue, Pool
 from operator import itemgetter
@@ -165,10 +169,29 @@ args.genomeFeature = int(args.genomeFeature)
 ####################################################################
 #### sPARTA FUNCTIONS ##############################################
 
+def checkUser():
+    '''
+    Checks if user is authorized to use script
+    '''
+    print ("\n#### Fn: Checking user #################################")
+    auser       = getpass.getuser()
+    localtime   = time.asctime( time.localtime(time.time()) )
+    # print ("Local current time :", localtime)
+    print("Hello '%s' - %s" % (auser,localtime))
+    print("You can seek help or report issues at: https://github.com/atulkakrana/sPARTA/issues" )
+    # if auser in allowedUser:
+    #     print("Hello '%s' - Issues need to be reproted: https://github.com/atulkakrana/phasTER/issues \n" % (auser))
+    # else:
+    #     print("YOU ARE NOT AUTHORIZED TO USE DEVELOPMENT VERSION OF 'sPARTA'")
+    #     print("Contact 'Atul Kakrana' at kakrana@gmail.com for permission\n")
+    #     sys.exit()
+    
+    return None
+
 def checkLibs():
     '''Checks for required components on user system'''
 
-    print("\n++Checking for required libraries and components ######")
+    print("\n#### Fn: Check libraries and components ################")
     goSignal    = 1 
     # isRpy2      = importlib.find_loader('rpy2')
     # if isRpy2 is None:
@@ -180,18 +203,18 @@ def checkLibs():
 
     isNumpy     = importlib.find_loader('numpy')
     if isNumpy is None:
-        print("--numpy  : missing")
+        print("--numpy              : missing")
         goSignal    = 0
     else:
-        print("--numpy  : found")
+        print("--numpy              : found")
         pass
 
     isScipy     = importlib.find_loader('scipy')
     if isScipy is None:
-        print("--scipy  : missing")
+        print("--scipy              : missing")
         goSignal    = 0
     else:
-        print("--scipy  : found")
+        print("--scipy              : found")
         pass
 
     # isPyfasta   = importlib.find_loader('pyfasta')
@@ -206,6 +229,7 @@ def checkLibs():
         print("\nPlease install missing libraries before running the analyses")
         print("See README for how to install these")
         print("sPARTA has unmet dependendies and will exit for now\n")
+        print("You can seek help or report issues at: https://github.com/atulkakrana/sPARTA/issues")
         sys.exit()
 
     # isTally = shutil.which("tally")
@@ -219,12 +243,108 @@ def checkLibs():
 
     return None
 
+def checkfiles():
+    '''
+    pre-analysis check for files in working directory
+    '''
+
+    print("\n#### Fn: Check input files #############################")
+    goSignal    = 1 
+
+    ## 
+    if args.featureFile:
+        ## Check for feature file
+        if not os.path.isfile(args.featureFile):
+            # print("'%s' genome file not found at:%s" % (genomeFile,os.getcwd()))
+            print("--featureFile        : missing")
+            goSignal = 0
+        else:
+            print("--featureFile        : found")
+            pass 
+
+    if args.miRNAFile:
+        ## check for miRNA file
+        if not os.path.isfile(args.miRNAFile):
+            # print("'%s' file not found at:%s" % (args.miRNAFile,os.getcwd()))
+            # print("Please check if miRNA fasta file exists in your directory\n")
+            print("--miRNAFile          : missing")
+            goSignal = 0
+        else:
+            print("--miRNAFile          : found")
+            pass  
+
+    if args.annoFile:
+        ## Check for annotation file
+        if not os.path.isfile(args.annoFile):
+            # print("'%s' file not found at:%s" % (args.annoFile,os.getcwd()))
+            # print("Please check if GTF/GFF3 file exists in your directory\n")
+            print("--annoFile           : missing")
+            goSignal = 0
+        else:
+            print("--annoFile           : found")
+            pass
+    
+    if args.genomeFile:
+        ## Check for genome file
+        if not os.path.isfile(args.genomeFile):
+            # print("'%s' genome file not found at:%s" % (genomeFile,os.getcwd()))
+            print("--genomeFile         : missing")
+            goSignal = -1
+        else:
+            print("--genomeFile         : found")
+            pass  
+
+    if args.libs:
+        ## Check for PARE libs
+        for alib in args.libs:
+            if not os.path.isfile(alib):
+                # print("'%s' file not found at:%s" % (alib,os.getcwd()))
+                # print("Please check if GTF/GFF3 file exists in your directory\n")
+                print("--PARE lib(s)        : missing")
+                goSignal = -2
+            else:
+                print("--PARE lib(s)        : found")
+                pass
+
+
+    if goSignal == 0:
+        print("\n** Some input file(s) couldn't be located !!")
+        print("** sPARTA expects all input file to be in same directory with sPARTA program")
+        print("** Please copy the missing input files in '%s' directory and rerun sPARTA" % (os.getcwd()))
+        print("** sPARTA will exit for now \n")
+        print("You can seek help or report issues at: https://github.com/atulkakrana/sPARTA/issues")
+        sys.exit()
+    
+    elif goSignal == -1:
+        print("\n** Genome FASTA file couldn't be located !!")
+        print("** sPARTA expects all input file to be in same directory with sPARTA program")
+        print("** Please copy the genome FASTA file in '%s' directory and rerun sPARTA" % (os.getcwd()))
+        print("** Make sure that your genome FASTA has no digits/numbers in filename, otherwise it will be deleted in cleanup operation")
+        print("** sPARTA will exit for now \n")
+        print("You can seek help or report issues at: https://github.com/atulkakrana/sPARTA/issues")
+        sys.exit()
+    
+    elif goSignal == -2:
+        print("\n** All PARE/Degradome libraries couldn't be located !!")
+        print("** sPARTA expects all libraries in the same directory with sPARTA program")
+        print("** At least one of the input library is missing from '%s' directory" % (os.getcwd()))
+        print("** Please check and and rerun sPARTA")
+        print("** sPARTA will exit for now \n")
+        print("You can seek help or report issues at: https://github.com/atulkakrana/sPARTA/issues")
+        sys.exit()
+
+    else:
+        ## Good to go !!
+        pass
+
+    return None
+
 def genomeReader(genomeFile):
     '''
     Reads Genome FASTA file
     '''
 
-    print("\nFn: genomeReader #########################################")
+    print("\n#### Fn: genomeReader ##################################")
     
     #### Check for genome file
     if not os.path.isfile(genomeFile):
@@ -246,9 +366,13 @@ def genomeReader(genomeFile):
     for i in genomeList:
         chromoInfo  = i.partition('\n') 
         chrid       = chromoInfo[0].split()[0] 
-        chrSeq      = chromoInfo[2].replace("\n", "")
-        chromoDict[chrid]       = [chrSeq]
-        chromoLenDict[chrid]    = int(len(chrSeq)) - 1 ## To convert coords to python format
+        chrSeq      = chromoInfo[2].replace("\n", "").strip()
+        # print ("head",chrSeq[:20].strip())
+        # print ("excise",chrSeq[9:50].strip())
+        # print ("tail",chrSeq[-20:].strip())
+        # sys.exit()
+        chromoDict[chrid]       = chrSeq ## Bug 05-12-17a - The value for chromosome dictionary was being stored as list here,  and list convetred to string in EXTRACTFASTA1, therefore adding [' to 5'-end and '] to 3'-end - Fixed
+        chromoLenDict[chrid]    = int(len(chrSeq)) ## To convert coords to python format subtract 1nt - reverted in v1.25 as no such offset required for length
 
     print("Genome dict prepared for %s chromosome/scaffolds" % (len(chromoDict)))
     
@@ -258,7 +382,7 @@ def gtfParser(gtfFile):
 
     '''This function parses Trinity and Rocket GTF file
     to give a trascript entry and entry for all exons - Basically this is the parser for gffread geenrated files'''
-    print("\nFn: gtfParser ############################################")
+    print("\n#### Fn: gtfParser #####################################")
 
     #### Check if file exists
     if not os.path.isfile(gtfFile):
@@ -387,7 +511,7 @@ def gffParser(gffFile):
     '''
     Extract coordinates from GFF file. tested with GFF3 file from phytozome
     '''
-    print("\nFn: gffParser ############################################")
+    print("\n####Fn: gffParser ######################################")
     
     #### Check for GFF file
     if not os.path.isfile(gffFile):
@@ -399,24 +523,25 @@ def gffParser(gffFile):
 
     #### Parse
     fh_in       = open(gffFile,'r')
-    fh_in.readline() ## GFF version 
+    # fh_in.readline() ## GFF version - Fixes bug 05-12-17b - First entry was being missed, any line with # is skipped below
     gffRead     = fh_in.readlines()
     genome_info = []
     chromo_dict = {}
     
     for i in gffRead:
-        ent = i.strip('\n').split('\t')
-        #print (ent)
-        if i.startswith("#"): ## Fixes Bug: 010115
-            pass
-        else:
-            if ent[2] == 'gene':
-                chrID       = ent[0]
-                strand      = ent[6].translate(str.maketrans("+-","wc"))
-                geneName    = ent[8].split(';')[0].split('=')[1]
-                geneType    = 'gene'
-                #print(chrID,strand,geneName,ent[3],ent[4],geneType)
-                genome_info.append((chrID,strand,geneName,int(ent[3]),int(ent[4]),geneType))
+        if i.rstrip(): ## If line not empty
+            ent = i.strip('\n').split('\t')
+            # print (ent)
+            if i.startswith("#"): ## Fixes Bug: 010115
+                pass
+            else:
+                if ent[2] == 'gene':
+                    chrID       = ent[0]
+                    strand      = ent[6].translate(str.maketrans("+-","wc"))
+                    geneName    = ent[8].split(';')[0].split('=')[1]
+                    geneType    = 'gene'
+                    # print(chrID,strand,geneName,ent[3],ent[4],geneType)
+                    genome_info.append((chrID,strand,geneName,int(ent[3]),int(ent[4]),geneType))
         
     #genome_info_inter = genome_info ##
     # genome_info_sorted = sorted(genome_info, key=operator.itemgetter(0,1,3)) ## CHR_ID, strand and start 
@@ -433,7 +558,7 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
     '''
     extract coordinates of genes and intergenic regions 
     '''
-    print("Fn: extractFeatures ######################################\n")
+    print("\n#### Fn: extractFeatures ###############################")
     alist = []##
     for i in range(0, int(len(genome_info))+1): #
         #print (i)
@@ -443,13 +568,15 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
         achr        = gene1[0]
         bchr        = gene2[0]
         # print(gene1,gene2)
+        # sys.exit()
+
         
         if gene1[3] == gene2[3] and gene1[4] == gene2[4]:
             ## Gene is same/overlapping consider next gene
             pass
         else:
             if tuple(gene1[0:2]) not in alist:#
-                print ('-Caching gene coords for chromosome: %s and strand: %s' % (gene1[0], gene1[1]))
+                print ('--Caching gene coords for chromosome: %s and strand: %s' % (gene1[0], gene1[1]))
                 alist.append((gene1[0:2]))
                 inter_start1    = 1
                 inter_end1      = int(gene1[3])-1#
@@ -473,8 +600,16 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
                 else: ## Intergenic from end of chromosome/scaffold
                     inter_start2    = int(gene1[4])+1 ## From end of first gene of chromosome
                     # inter_end2      = '-' ### Till end of chromosome
-                    inter_end2      = int(chromoLenDict[achr]) ## Till end of chromosome
-                    
+
+                    try:
+                        inter_end2      = int(chromoLenDict[achr]) ## Till end of chromosome
+                    except KeyError:
+                        print("** '%s' is either missing from FASTA file or" % (achr))
+                        print("** the name does not matches with the GFF/GTF file")
+                        print("**Check if the '%s' exists in your genome FASTA file" % (achr))
+                        print("**If '%s' is present in your genome FASTA file then make sure the names matches\n" % (achr))
+                        sys.exit()
+
                     if gene1[1] == 'w': ##The gene is on positive strand so upstream
                         inter_name1 = ('%s_up'      % (gene1[2]))
                         inter_name2 = ('%s_down'    % (gene1[2]))
@@ -499,7 +634,14 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
                 else: #
                     inter_start = int(gene1[4])+1#
                     # inter_end   = '-' ## Different from MPPP as no table ro query for end of chromosome in public version
-                    inter_end2  = int(chromoLenDict[achr]) ## Till end of chromosome
+                    try:
+                        inter_end2  = int(chromoLenDict[achr]) ## Till end of chromosome
+                    except KeyError:
+                        print("** '%s' is either missing from FASTA file or" % (achr))
+                        print("** the name does not matches with the GFF/GTF file")
+                        print("**Check if the '%s' exists in your genome FASTA file" % (achr))
+                        print("**If '%s' is present in your genome FASTA file then make sure the names matches\n" % (achr))
+                        sys.exit()
                     
                     if gene1[1] == 'w':
                         inter_name = ('%s_down' % (gene1[2]))
@@ -508,7 +650,7 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
                     genome_info_inter.append((gene1[0],gene1[1],inter_name,inter_start,inter_end,gene_type)) ##Chr_id, strand
     
 
-    ## Additional check for scaffolded genomes, if there are no genes in a scffold it's whole seqeunce will be fetched as intergenic
+    ## Additional check for scaffolded genomes, if there are no genes in a scaffold it's whole seqeunce will be fetched as intergenic
     if args.genomeFeature == 1:
         for i in chromoDict.keys():
             alen = len(chromoDict[i])
@@ -535,9 +677,9 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
     ## Sort the list after adding intergenic regions on on basis of chr_id and strand that is essential while caching chromosme during slicing sequences
     genome_info_inter_sort = sorted(genome_info_inter, key=operator.itemgetter(0,1))
         
-    gene_coords_file = './coords'
-    coords_out = open(gene_coords_file, 'w')
-    coords = []        
+    gene_coords_file    = './coords'
+    coords_out          = open(gene_coords_file, 'w')
+    coords              = [] ## List to hold extracted coords        
     
     if args.genomeFeature == 2: ## Both gene and inter
         for ent in genome_info_inter_sort:
@@ -555,6 +697,9 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
             genomeFilter = 'gene'
         elif args.genomeFeature == 1:
             genomeFilter = 'inter'
+        else:
+            pass
+
         for ent in genome_info_inter_sort:
             if (ent[5] == genomeFilter):
                 #print(ent)
@@ -571,9 +716,8 @@ def extractFeatures(genomeFile,chromoDict,chromoLenDict,genome_info,genome_info_
                     pass
     
     print ("Number of coords in 'coords' list: %s" % (len(coords)))
+    coords_out.close()
 
-
-    coords_out.close()    
     return coords
 
 def getFASTA1(genomeFile,coords,chromoDict):
@@ -581,29 +725,40 @@ def getFASTA1(genomeFile,coords,chromoDict):
     '''
     Extracts Genes or intergenic regions based on coords list from genome seqeunce - New proposed name get features
     '''
-    print("Fn: getFASTA1\n\n")
-    fastaOut = './genomic_seq.fa'
-    fh_out = open(fastaOut, 'w')
+    print("\n#### Fn: getFASTA ######################################")
+    fastaOut    = './genomic_seq.fa'
+    fh_out      = open(fastaOut, 'w')
 
-    fastaList = [] ## Stores name and seq for fastFile
-    chromo_mem = []
+    print("Fetching genes or intergenic regions")
+    fastaList   = [] ## Stores name and seq for fastFile
+    chromo_mem  = []
     for i in coords: ## Coords is list from annotation parser
         #print (i)
         chr_id  = i[0]
         strand  = i[1]
         gene    = i[2]
-        start   = i[3]-1
+        start   = i[3] - 1 
         end     = i[4]
         # print('\nGene:%s | Start:%s End:%s Chr:%s Strand:%s' % (gene,start,end,chr_id,strand))
         
         if tuple(i[0:2]) not in chromo_mem: 
             chromo_mem.append(tuple(i[0:2]))   ## First entry of chromosome
-            print("\n++Reading chromosome:%s and strand:'%s' ################" % (i[0],i[1]) )
+            print("--Reading chromosome: %s and strand: %s" % (i[0],i[1]) )
             # print('--Gene:%s | Start:%s End:%s Chr:%s Strand:%s' % (gene,start,end,chr_id,strand))
-            print("--Fetching gene:%s" % (gene))
+            # print("-- Fetching gene:%s" % (gene))
             chrKey = i[0]
-            chromo = str(chromoDict[chrKey])
-            #print('Chromosome:',chromo)
+            
+            try:
+                chromo = str(chromoDict[chrKey]) ## Bug 05-12-17a - The value for chromosome dictionary was a list, being convetred to string, therfore adding [' to 5'-end and '] to 3'-end - Fixed
+                # print ("head",chromo[:20].strip())
+                # print ("excise",chromo[9:50].strip())
+                # print ("tail",chromo[-20:].strip())
+            except KeyError:
+                print("** '%s' is either missing from FASTA file or" % (achr))
+                print("** the name does not matches with the GFF/GTF file")
+                print("**Check if the '%s' exists in your genome FASTA file" % (achr))
+                print("**If '%s' is present in your genome FASTA file then make sure the names matches\n" % (achr))
+                sys.exit()
             
             if end == '-':
                 gene_seq = chromo[start:].translate(str.maketrans("autgcn","AUTGCN")) ## Usually first entry (recorded in this loop) will be from chr-start to gene-start, but if this coord/region is few nts (<20nt) 
@@ -623,7 +778,7 @@ def getFASTA1(genomeFile,coords,chromoDict):
     
         elif end == '-': 
             # print('--Gene:%s | Start:%s End:%s Chr:%s Strand:%s' % (gene,start,end,chr_id,strand))
-            print("--Fetching gene:%s" % (gene))
+            # print("--Fetching gene:%s" % (gene))
             gene_seq = chromo[start:].translate(str.maketrans("autgcn","AUTGCN")) ##
             
             ncount = gene_seq.count('N') ### Check of 'Ns' that cause bowtie to hang for a very long time. This is observed in chickpea genome.
@@ -639,7 +794,7 @@ def getFASTA1(genomeFile,coords,chromoDict):
             
         else:
             # print('--Gene:%s | Start:%s End:%s Chr:%s Strand:%s' % (gene,start,end,chr_id,strand))
-            print("--Fetching gene:%s" % (gene))
+            # print("--Fetching gene:%s" % (gene))
             gene_seq = chromo[start:end].translate(str.maketrans("autgcn","AUTGCN")) ##
             
             ncount = gene_seq.count('N') ### Check of 'Ns' that cause bowtie to hang for a very long time. This is observed in chickpea genome.
@@ -652,9 +807,22 @@ def getFASTA1(genomeFile,coords,chromoDict):
                 else:
                     fh_out.write('>%s\n%s\n' % (gene,gene_seq))
                     fastaList.append((gene,gene_seq))
+    
+        # ## Test extracted coords - IDs correspond to ChickPea genome
+        # if gene == "Ca_99998":
+        #     print('\nGene:%s | Start:%s End:%s Chr:%s Strand:%s' % (gene,start,end,chr_id,strand))
+        #     print(gene_seq_rev)
+        # elif gene == "Ca_99999":
+        #     print('\nGene:%s | Start:%s End:%s Chr:%s Strand:%s' % (gene,start,end,chr_id,strand))
+        #     print(gene,gene_seq)
+        #     sys.exit()
+        # else:
+        #     pass
 
-    time.sleep(10)
+
+    time.sleep(3)
     fh_out.close()
+    # sys.exit()
     
     return fastaOut,fastaList
 
@@ -2072,10 +2240,12 @@ def resultUniq(filetag):
     """Read validated files for each library 
     and generate a single file with unique results"""
 
+    print("\n#### Fn: resultUniq ####################################")
+
     # fls = [file for file in os.listdir('./output') if re.search(r'revmapped.csv', file)]
     fls = [file for file in os.listdir('./output') if file.endswith (filetag)]
     
-    print ('\n+Combining results from all the files to generate a single report\n')
+    print ('Combining results from all the files to generate a single report\n')
     print ('--Files with lib-wise results:',fls)
 
     
@@ -2146,7 +2316,7 @@ def genomicCoord(ent): ####
     ## Reverse map co-ordinates ##########################################################
     # print ('**Reverse mapping of Co-ordinates will be performed**')
     if gene_name in coord_dict_wat:
-        print ('Entry: %s in positive strand: %s' % (ent[0:4],coord_dict_wat[gene_name]))
+        # print ('Entry: %s in positive strand: %s' % (ent[0:4],coord_dict_wat[gene_name]))
         geno_start = coord_dict_wat[gene_name][1]###Use for reverse mapping of postive genes
 
         #print('Looking for chr_id')
@@ -2159,7 +2329,7 @@ def genomicCoord(ent): ####
         new_bind_site_end   = (int(geno_start)-1)+int(bind_site[1])
         new_bind_site       = '%s-%s' % (new_bind_site_start,new_bind_site_end)
     else:
-        print ('Entry: %s in reverse strand: %s' % (ent[0:4],coord_dict_crick[gene_name]))
+        # print ('Entry: %s in reverse strand: %s' % (ent[0:4],coord_dict_crick[gene_name]))
         geno_end    = coord_dict_crick[gene_name][2] ### Use for reverse mapping of negative genes
         #print('Looking for chr_id')
         chr_id      = coord_dict_crick[gene_name][0]
@@ -2171,7 +2341,7 @@ def genomicCoord(ent): ####
         new_bind_site_start = (int(geno_end)+1)-int(bind_site[1])
         new_bind_site       = '%s-%s' % (new_bind_site_start,new_bind_site_end)
 
-    print("Rev Mapped: %s,%s,%s,%s,%s" % (str(chr_id),strand,new_cleave_site,new_bind_site_start,new_bind_site_end))
+    # print("Rev Mapped: %s,%s,%s,%s,%s" % (str(chr_id),strand,new_cleave_site,new_bind_site_start,new_bind_site_end))
     rev_mapped_entry = ("%s,%s,%s,%s,%s,%s" % (','.join(ent),str(chr_id),strand,new_cleave_site,new_bind_site_start,new_bind_site_end))
     
     return rev_mapped_entry
@@ -2260,7 +2430,7 @@ def ReverseMapping():
         ValidTarGeno = []
         for i in ScoInpExt:
             print("PARE lib:",afile)
-            print("\nEntry for reverse mapping:%s" % (i))
+            # print("\nEntry for reverse mapping:%s" % (i))
             z = genomicCoord(i)
             ValidTarGeno.append(z)
         
@@ -2270,7 +2440,7 @@ def ReverseMapping():
         # ValidTarGeno = PPResults(genomicCoord, ScoInpExt) ## Results are in form of list
         
         print ('Reverse mapping complete for:%s\n\n\n' % (afile))
-        print("Step 4/4: Done!!\n\n")
+        # print("Step 4/4: Done!!\n\n")
         time.sleep(1)
 
         #### WRITE RESULTS ##############
@@ -2410,13 +2580,14 @@ def coreReserve(cores):
 
     return nproc
 
-
 ##############################################################################################
 #### MAIN FUNCTION ###########################################################################
 def main():
 
     ## Pre-run check and imports ######################
+    checkUser()
     checkLibs()
+    checkfiles()
     global numpy,stats,scipy
     from scipy import stats
     import numpy,scipy
@@ -2842,17 +3013,25 @@ if __name__ == '__main__':
 ## Improved reverse mapping. If coords includes chromosome end i.e. '-' as end coordinate then revese mapping 
 #### generated an error. Now, a dict of chromo lengths "chromoLenDict" is used to fetch chromosome ends
 ## Added a module to slightly better assign the cores - Used from PHAS detect
+
+## v1.23 -> v1.25 [Atul] [major fix]
+## GFF parser skips empty lines - resolves an issue fron user in Iowa
+## Added error check for match/missing identifiers between GFF/GTF and FASTA file
+## Fixed - Bug 05-12-17a - This lead to 2-nt shift in extracted seqeunces. The ise was that chromosome seqeunce was
+#### being stored as list in the dictionary. In EXTRACTFASTA1, value fetched from disctionary was being converted to 
+#### string in single command so the chromo seqeunce has extra " [' " at 5'-end and extra " '] " at 3'-end
+## Fixed bug 05-12-17b - where first line of GFF was skipped using readline, sometimes skipping a real entry, lines
+#### are now checked for '#' and skipped
+## Added a function to check for all input files before executing analysis
+## Added checkuser function to pass message
+## Added prints and formatted command-line info
+
+
+
+## FUTURE DEVELOPMENT [Pending
 ## Added a de-duplicator to sPARTA - No need to run tally - This needs to be integrated to sPARTA
-
-
-
-
-## FUTURE DEVELOPMENT [Pending]
-## Add file checks
 ## Fine tune paralleization in validation part
 ## Add degradome plots
 ## Add funtionality to include probabilty of accesibilty and RNA-RNA duplex formation, combine this -value with PARE based p-value
 ## fasta file is read once to fastaList. What does the 'unambiguousBaseCounter' function does with FASTA file? Can we use the fastaList to avoid file reading again?
 ## Which switches to use to not perform reverse mapping if feature file is supplied? Rename final uniq file to include 'revammpped' consitant with library specific files. 
-## Optimization in Reza's part to improve speed
-## Add chart function
