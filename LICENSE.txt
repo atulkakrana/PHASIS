@@ -10,8 +10,7 @@ Artistic License 2.0 for more details.
 
 A copy of the Artistic License 2.0 is included below and is
 available at https://opensource.org/licenses/Artistic-2.0
-
-
+ 
 Artistic License 2.0
 Copyright (c) 2000-2006, The Perl Foundation.
 
