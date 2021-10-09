@@ -2436,9 +2436,9 @@ def usagedata():
     ### Send 
     # Send the message via our own SMTP server.
     # print("Sending settings file")
-    s = smtplib.SMTP('localhost')
-    s.send_message(msg)
-    s.quit()
+    #s = smtplib.SMTP('localhost')
+    #s.send_message(msg)
+    #s.quit()
 
     return None
 
